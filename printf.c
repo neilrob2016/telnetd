@@ -25,7 +25,7 @@ void sockprintf(char *fmt, ...)
  	writeSockStr((char *)out2);
 
 	/* Only print if child process, not sub child */
-	if (getpid() == child_pid) logprintf(child_pid,(char *)out2);
+	if (getpid() == master_pid) logprintf(master_pid,(char *)out2);
 }
 
 
@@ -33,13 +33,15 @@ void sockprintf(char *fmt, ...)
 
 void logprintf(pid_t pid, char *fmt, ...)
 {
+	struct tm *tms;
 	va_list args;
 	FILE *fp;
-	struct tm *tms;
 	time_t now;
 	char tstr[30];
 	char pre[40];
 	char *fstr;
+	int fd;
+	int i;
 
 	/* Don't print to stdout if we're a daemon */
 	if (!log_file && (flags & FLAG_DAEMON)) return;
@@ -61,9 +63,23 @@ void logprintf(pid_t pid, char *fmt, ...)
 	{
 		if ((fp = fopen(log_file,"a")))
 		{
-			fprintf(fp,"%s%s",pre,fstr);
+			/* Try and get a lock. If we can't after a short time
+			   just give up */
+			fd = fileno(fp);
+			for(i=0;
+			    i < 5 && flock(fd,LOCK_EX | LOCK_NB) == EWOULDBLOCK;
+			    ++i) 
+			{
+				/* Tiny delay so user doesn't notice */
+				usleep(1000);
+			}
+			if (i < 5)
+				fprintf(fp,"%s%s",pre,fstr);
+			else
+				fprintf(stderr,"ERROR: logprintf(): Failed to get file lock.\n");
 			fclose(fp);
 		}
+		else fprintf(stderr,"ERROR: logprintf(): fopen(): %s\n",strerror(errno));
 	}
 	else 
 	{

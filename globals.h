@@ -29,73 +29,63 @@
 #include <sys/select.h>
 #include <sys/ioctl.h>
 #include <sys/utsname.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <sys/file.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <arpa/telnet.h>
 
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20200617"
+#define SVR_VERSION "20211207"
 
-#define PORT               23
-#define MAX_LOGIN_ATTEMPTS 3
-#define LOGIN_PAUSE_SECS   2
-#define LOGIN_TIMEOUT_SECS 10
-#define BUFFSIZE           10000
+#define PORT                23
+#define BUFFSIZE            2000
+#define LOGIN_PAUSE_SECS    0
+#define LOGIN_TIMEOUT_SECS  20
+#define LOGIN_MAX_ATTEMPTS  3
+#define TELOPT_TIMEOUT_SECS 2
+
+#ifdef __APPLE__
+#define LOGIN_PROG     "/usr/bin/login"
+#else
+#define LOGIN_PROG     "/bin/login"
+#endif
+#define CONFIG_FILE    "telnetd.cfg"
+#define LOGIN_PROMPT   "login: "
+#define PWD_PROMPT     "password: "
+#define HEXDUMP_CHARS  10
+#define DELETE_KEY     127
+
+/* Defined in arpa/telnet.h */
+#define TELNET_IS   TELQUAL_IS
+#define TELNET_SEND TELQUAL_SEND
+#define TELNET_INFO TELQUAL_INFO
+#define TELNET_SE   SE
+#define TELNET_BRK  BREAK
+#define TELNET_IP   IP
+#define TELNET_AO   AO
+#define TELNET_AYT  AYT
+#define TELNET_EC   EC
+#define TELNET_EL   EL
+#define TELNET_GA   GA
+#define TELNET_SB   SB
+#define TELNET_WILL WILL
+#define TELNET_WONT WONT
+#define TELNET_DO   DO
+#define TELNET_DONT DONT
+#define TELNET_IAC  IAC
+
+#define IS_VAR_START(C) (C == NEW_ENV_VAR || C == ENV_USERVAR)
 
 #ifndef MAINFILE
 #define EXTERN extern
 #else
 #define EXTERN
 #endif
-
-#ifdef __APPLE__
-#define LOGIN_PROG   "/usr/bin/login"
-#else
-#define LOGIN_PROG   "/bin/login"
-#endif
-
-/* Command line */
-EXTERN char *login_prog;
-EXTERN char *login_prompt;
-EXTERN char *pwd_prompt;
-EXTERN char *shell;
-EXTERN char *iface;
-EXTERN char *motd_file;
-EXTERN int port;
-EXTERN int max_login_attempts;
-EXTERN int login_pause_secs;
-EXTERN int login_timeout_secs;
-
-/* General */
-EXTERN pid_t parent_pid;
-EXTERN char username[BUFFSIZE+1];
-EXTERN u_char buff[BUFFSIZE+1];
-EXTERN u_char line[BUFFSIZE+1];
-EXTERN char ptybuff[BUFFSIZE+1];
-EXTERN char ipaddr[20];
-EXTERN char *log_file;
-EXTERN char *god_login;
-EXTERN char *god_utmp_name;
-EXTERN int buffpos;
-EXTERN int listen_sock;
-EXTERN int sock;
-EXTERN int term_height;
-EXTERN int term_width;
-
-/* Child */
-EXTERN struct passwd *userinfo;
-EXTERN struct passwd god_userinfo;
-EXTERN uint16_t flags;
-EXTERN sigset_t sigmask;
-EXTERN pid_t child_pid;
-EXTERN int state;
-EXTERN int ptym;
-EXTERN int ptys;
-EXTERN int attempts;
-EXTERN int line_buffpos;
-EXTERN int got_term_type;
-EXTERN char prev_c;
 
 enum
 {
@@ -104,62 +94,21 @@ enum
 	STDERR
 };
 
+
 enum
 {
-	FLAG_ECHO       = 1,
-	FLAG_ALLOW_ROOT = 2,
-	FLAG_DAEMON     = 4,
-	FLAG_GOD_MODE   = 8,
-	FLAG_HEXDUMP    = 16
-};
-
-
-/* Commands and odes */
-enum
-{
-	TELNET_IS    = 0,
-	TELNET_SEND, 
-	TELNET_SE    = 240,
-	TELNET_BRK   = 243,
-	TELNET_IP,
-	TELNET_AO,
-	TELNET_AYT,
-	TELNET_EC,
-	TELNET_EL,
-	TELNET_GA,
-	TELNET_SB    = 250,
-	TELNET_WILL,
-	TELNET_WONT,
-	TELNET_DO,
-	TELNET_DONT,
-	TELNET_IAC
-};
-
-
-/* Come common options */
-enum
-{
-	TELOPT_ECHO      = 1,
-	TELOPT_RECON,
-	TELOPT_SGA,
-	TELOPT_SIZE,
-	TELOPT_STATUS,
-	TELOPT_TERM      = 24,
-	TELOPT_NAWS      = 31,
-	TELOPT_SPEED,
-	TELOPT_FLOW,
-	TELOPT_LINEMODE,
-	/* 35 */
-	TELOPT_XDLOC,
-	TELOPT_ENV,
-	TELOPT_AUTH,
-	TELOPT_ENCRYPT,
-	TELOPT_NEWENV
+	FLAG_ECHO        = 1,
+	FLAG_DAEMON      = 2,
+	FLAG_HEXDUMP     = 4,
+	FLAG_RX_TTYPE    = 8,
+	FLAG_RX_ENV      = 16,
+	FLAG_APPEND_USER = 32
 };
 
 
 enum
 {
+	STATE_TELOPT,
 	STATE_LOGIN,
 	STATE_PWD,
 	STATE_SHELL,
@@ -168,10 +117,67 @@ enum
 };
 
 
-/* child.c */
-void childMain();
-void sendWinSize();
-void childExit(int code);
+/* Config file */
+EXTERN char *iface;
+EXTERN char *config_file;
+EXTERN char *login_prompt;
+EXTERN char *pwd_prompt;
+EXTERN char *motd_file;
+EXTERN char **banned_users;
+EXTERN int login_max_attempts;
+EXTERN int login_pause_secs;
+EXTERN int login_timeout_secs;
+EXTERN int banned_users_cnt;
+EXTERN int telopt_timeout_secs;
+EXTERN int port;
+
+/* General */
+EXTERN struct sockaddr_in iface_in_addr;
+EXTERN pid_t parent_pid;
+EXTERN char username[BUFFSIZE+1];
+EXTERN u_char buff[BUFFSIZE+1];
+EXTERN u_char line[BUFFSIZE+1];
+EXTERN char ptybuff[BUFFSIZE+1];
+EXTERN char ipaddr[20];
+EXTERN char *log_file;
+EXTERN int buffpos;
+EXTERN int sock;
+EXTERN int term_height;
+EXTERN int term_width;
+EXTERN int listen_sock;
+
+/* Child */
+EXTERN struct passwd *userinfo;
+EXTERN struct passwd god_userinfo;
+EXTERN uint16_t flags;
+EXTERN sigset_t sigmask;
+EXTERN pid_t master_pid;
+EXTERN pid_t slave_pid;
+EXTERN int state;
+EXTERN int ptym;
+EXTERN int ptys;
+EXTERN int attempts;
+EXTERN int line_buffpos;
+EXTERN int login_exec_argv_cnt;
+EXTERN char prev_c;
+EXTERN char *telopt_username;
+EXTERN char **shell_exec_argv;
+EXTERN char **login_exec_argv;
+
+/* config.c */
+void parseConfigFile();
+
+/* master_child.c */
+void runMaster();
+void setUserNameAndPwdState(char *uname);
+int  loginAllowed(char *uname);
+void checkLoginAttempts();
+void storeWinSize();
+void masterExit(int code);
+
+/* slave_child.c */
+void runSlave();
+void notifyWinSize();
 
 /* pty.c */
 int  openPTYMaster();
@@ -179,7 +185,6 @@ int  openPTYSlave();
 char *getPTYName();
 
 /* io.c */
-void processChar(u_char c);
 void readPtyMaster();
 void readSock();
 void writeSock(char *data, int len);
@@ -191,5 +196,7 @@ void logprintf(pid_t pid, char *fmt, ...);
 void sendInitialTelopt();
 u_char *parseTelopt(u_char *p, u_char *end);
 
-/* subchild.c */
-void execShell();
+/* split.c */
+char *splitString(char *str, char *end, char ***words, int *word_cnt);
+void  addWordToArray(char ***words, char *word, char *end, int *word_cnt);
+void  freeWords(char **words, int word_cnt);

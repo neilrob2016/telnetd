@@ -1,9 +1,6 @@
 #include "globals.h"
 
-#define HEXDUMP_CHARS 5
-#define DELETE_KEY    127
-
-void hexdump(u_char *start, u_char *end);
+void hexdump(u_char *start, u_char *end, int rx);
 void processChar(u_char c);
 void processLine();
 int  checkLogin(char *password);
@@ -19,25 +16,26 @@ void readSock()
 
 	if (buffpos >= BUFFSIZE)
 	{
-		sockprintf("ERROR: Buffer overrun 1.\n");
-		childExit(1);
+		sockprintf("ERROR: Buffer overrun.\n");
+		logprintf(master_pid,"ERROR: readSock(): Buffer overrun.");
+		masterExit(1);
 	}
 	switch((len = read(sock,buff+buffpos,BUFFSIZE-buffpos)))
 	{
 	case -1:
-		logprintf(child_pid,"ERROR: read(sock): %s\n",strerror(errno));
-		childExit(1);
+		logprintf(master_pid,"ERROR: readSock(): %s\n",strerror(errno));
+		masterExit(1);
 
 	case 0:
-		logprintf(child_pid,"CONNECTION CLOSED by remote client\n");
-		childExit(0);
+		logprintf(master_pid,"CONNECTION CLOSED by remote client\n");
+		masterExit(0);
 	}
 
 	/* end is the next position after the last character */
 	end = buff + buffpos + len;
 	buff[buffpos+len] = 0;
 
-	if (flags & FLAG_HEXDUMP) hexdump(buff+buffpos,end);
+	if (flags & FLAG_HEXDUMP) hexdump(buff+buffpos,end,1);
 
 	/*** Loop through whats currently in the buffer ***/
 	for(p1=buff;p1 < end;++p1)
@@ -82,9 +80,9 @@ void readSock()
 
 
 /*** Hexdump to the log file ***/
-void hexdump(u_char *start, u_char *end)
+void hexdump(u_char *start, u_char *end, int rx)
 {
-	char str[50];
+	char str[HEXDUMP_CHARS * 10];
 	char add[4];
 	u_char *linestart;
 	u_char *ptr;
@@ -93,7 +91,7 @@ void hexdump(u_char *start, u_char *end)
 
 	for(ptr=linestart=start;ptr < end;linestart=ptr)
 	{
-		strcpy(str,"HEX: | ");
+		strcpy(str,rx ? "RX: | " : "TX: | ");
 
 		/* Do hex values */
 		for(i=0;i < HEXDUMP_CHARS;++i)
@@ -122,7 +120,7 @@ void hexdump(u_char *start, u_char *end)
 			else strcat(str," ");
 		}
 		strcat(str,"\n");
-		logprintf(child_pid,str);
+		logprintf(master_pid,str);
 	}
 }
 
@@ -206,26 +204,8 @@ void processLine()
 			writeSockStr(login_prompt);
 			return;
 		}
-		if (!(flags & FLAG_ALLOW_ROOT) && !strcmp((char *)line,"root"))
-		{
-			writeSockStr("Root login not permitted.\r\n");
-			writeSockStr(login_prompt);
-			logprintf(child_pid,"Attemped ROOT LOGIN\n");
-			++attempts;
-			break;
-		}
-		if (god_login && !strcmp((char *)line,god_login))
-		{
-			flags |= FLAG_GOD_MODE;
-			logprintf(child_pid,"*** GOD LOGIN ***\n");
-			userinfo = &god_userinfo;
-			execShell();
-			break;
-		}
-		strcpy(username,(char *)line);
-		state = STATE_PWD;
-		if (flags | FLAG_ECHO) flags ^= FLAG_ECHO;
-		writeSockStr(pwd_prompt);
+		if (loginAllowed((char *)line))
+			setUserNameAndPwdState((char *)line);
 		break;
 
 	case STATE_PWD:
@@ -234,23 +214,20 @@ void processLine()
 		if (!checkLogin((char *)line))
 		{
 			writeSockStr("Login incorrect.\r\n");
+			checkLoginAttempts();
+
 			if (login_pause_secs) sleep(login_pause_secs);
 			writeSockStr(login_prompt);
 			state = STATE_LOGIN;
-			++attempts;
 			break;
 		}
-		logprintf(child_pid,"LOGIN user = '%s'\n",username);
-		execShell();
+		logprintf(master_pid,"User logged in as \"%s\".\n",username);
+		runSlave();
 		break;
+
 	default:
+		/* Shouldn't be in any other states in this function */
 		assert(0);
-	}
-	if (attempts == max_login_attempts)
-	{
-		writeSockStr("\r\n\nMaximum login attempts reached.\r\n\n");
-		logprintf(child_pid,"Maximum LOGIN attempts reached\n");
-		childExit(0);
 	}
 	line[0] = 0;
 }
@@ -280,7 +257,7 @@ int checkLogin(char *password)
 	{
 		if (!(spwd = getspnam(userinfo->pw_name)))
 		{
-			sockprintf("ERROR: getspnam(): %s\n",strerror(errno));
+			sockprintf("ERROR: checkLogin(): getspnam(): %s\n",strerror(errno));
 			return 0;
 		}
 		pwd = spwd->sp_pwdp;
@@ -303,7 +280,7 @@ int checkLogin(char *password)
 		hash = pwd + 2;
 	}
 	if (!(cry = crypt(password,salt)))
-		logprintf(child_pid,"ERROR: crypt() returned NULL");
+		logprintf(master_pid,"ERROR: checkLogin(): crypt() returned NULL");
 	free(salt);
 	return (cry ? !strcmp(cry,pwd) : 0);
 #endif
@@ -316,18 +293,34 @@ int checkLogin(char *password)
 void writeSock(char *data, int len)
 {
 	int bytes;
+	int i;
 	int l;
 
 	for(bytes=0;bytes < len;)
 	{
-		if ((l = write(sock,data + bytes,len - bytes)) == -1)
+		/* Retry 3 times */
+		for(i=0;i < 3;++i)
 		{
-			if (errno == EINTR) continue;
-			printf("%d: write(): %s\n",getpid(),strerror(errno));
+			if (i) logprintf(master_pid,"Write retry #%d\n",i);
+			if ((l = write(sock,data + bytes,len - bytes)) == -1)
+			{
+				if (errno == EINTR) 
+				{
+					logprintf(master_pid,"ERROR: writeSock(): write(): Interrupted");
+					continue;
+				}
+				logprintf(master_pid,"ERROR: writeSock(): write(): %s\n",strerror(errno));
+			}
+			else break;
+		}
+		if (i == 3)
+		{
+			logprintf(master_pid,"ERROR: writeSock(): Failed to write data.\n");
 			return;
 		}
 		bytes += l;
 	}
+	if (flags & FLAG_HEXDUMP) hexdump((u_char *)data,(u_char *)data+len,0);
 }
 
 

@@ -11,6 +11,7 @@ void sendResponse(u_char com, u_char opt);
 void requestSubOption(u_char sb);
 u_char *getTermSize(u_char *p, u_char *end);
 u_char *getTermType(u_char *p, u_char *end);
+u_char *getEnviroment(u_char *p, u_char *end);
 u_char *findSubOptEnd(u_char *p, u_char *end);
 
 
@@ -18,13 +19,14 @@ u_char *findSubOptEnd(u_char *p, u_char *end);
      terminal type, terminal/window size and X display string ***/
 void sendInitialTelopt()
 {
-	char mesg[13];
-	sprintf(mesg,"%c%c%c%c%c%c%c%c%c%c%c%c",
+	char mesg[16];
+	sprintf(mesg,"%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
 		TELNET_IAC,TELNET_WILL,TELOPT_SGA,
 		TELNET_IAC,TELNET_WILL,TELOPT_ECHO,
-		TELNET_IAC,TELNET_DO,TELOPT_TERM,
-		TELNET_IAC,TELNET_DO,TELOPT_NAWS);
-	writeSock(mesg,12);
+		TELNET_IAC,TELNET_DO,TELOPT_TTYPE,
+		TELNET_IAC,TELNET_DO,TELOPT_NAWS,
+		TELNET_IAC,TELNET_DO,TELOPT_NEW_ENVIRON);
+	writeSock(mesg,16);
 }
 
 
@@ -48,7 +50,8 @@ u_char *parseTelopt(u_char *p, u_char *end)
 	/* IAC BRK/IP/AO/AYT/EC/EL
 	   IAC WILL/WONT/DO/DONT <option>          or
 	   IAC SB NAWS x x x x IAC SE              or
-	   IAC SB TERM IS <terminal type> IAC SE  */
+	   IAC SB TERM IS <terminal type> IAC SE  
+	   IAC SB NEW_ENVIRON IS/INFO <enviroment vars> IAC SE */
 	switch(com)
 	{
 	case TELNET_BRK:
@@ -81,10 +84,13 @@ u_char *parseTelopt(u_char *p, u_char *end)
 			return getTermSize(p+3,end);
 			break;
 
-		case TELOPT_TERM:
+		case TELOPT_TTYPE:
 			return getTermType(p+3,end);
+
+		case TELOPT_NEW_ENVIRON:
+			return getEnviroment(p+3,end);
 		}
-		logprintf(child_pid,"TELNET: Unexpected SB option %u\n",(u_char)opt);
+		logprintf(master_pid,"TELOPT: Unexpected SB option %u\n",(u_char)opt);
 		return findSubOptEnd(p+3,end);
 
 	case TELNET_WILL:
@@ -96,23 +102,16 @@ u_char *parseTelopt(u_char *p, u_char *end)
 			/* No response since we sent initial DO */
 			break;
 
-		case TELOPT_TERM:
-			requestSubOption(TELOPT_TERM);
+		case TELOPT_TTYPE:
+			requestSubOption(TELOPT_TTYPE);
 			break;
 
-		case TELOPT_SPEED:
-		case TELOPT_FLOW:
-		case TELOPT_LINEMODE:
-		case TELOPT_XDLOC:
-		case TELOPT_AUTH:
-		case TELOPT_NEWENV:
-			/* Seem to be sent by telnet client when on port 23, 
-			   but we don't want it to do any of these */
-			sendResponse(TELNET_DONT,opt);
+		case TELOPT_NEW_ENVIRON:
+			requestSubOption(TELOPT_NEW_ENVIRON);
 			break;
 		
 		default:
-			logprintf(child_pid,"TELNET: Unexpected WILL option %u\n",
+			logprintf(master_pid,"TELOPT: Refusing WILL option %u\n",
 				(u_char)opt);
 			sendResponse(TELNET_DONT,opt);
 			break;
@@ -126,16 +125,25 @@ u_char *parseTelopt(u_char *p, u_char *end)
 		switch(opt)
 		{
 		case TELOPT_NAWS:
-			sockprintf("TELNET: WARNING: Can't get terminal size.\n");
-			sendWinSize();
+			logprintf(master_pid,"TELOPT: Client WONT terminal size.\n");
+			sockprintf("WARNING: Your client refused to send terminal size.\n");
 			break;
 
-		case TELOPT_TERM:
-			sockprintf("TELNET: WARNING: Can't get terminal type.\n");
+		case TELOPT_TTYPE:
+			logprintf(master_pid,"TELOPT: Client WONT terminal type.\n");
+			sockprintf("WARNING: Your client refused to send terminal type.\n");
+			/* So we don't keep waiting for it */
+			flags |= FLAG_RX_TTYPE;
+			break;
+
+		case TELOPT_NEW_ENVIRON:
+			logprintf(master_pid,"TELOPT: Client WONT enviroment vars.\n");
+			sockprintf("WARNING: Your client refused to send enviroment variables.\n");
+			flags |= FLAG_RX_ENV;
 			break;
 
 		default:
-			logprintf(child_pid,"TELNET: Unexpected WONT option %u\n",
+			logprintf(master_pid,"TELOPT: Unexpected WONT option %u\n",
 				(u_char)opt);
 			break;
 		}
@@ -151,15 +159,11 @@ u_char *parseTelopt(u_char *p, u_char *end)
 
 		case TELOPT_ECHO:
 			/* Ditto above */
-			flags |= FLAG_ECHO;
-			break;
-
-		case TELOPT_STATUS:
-			sendResponse(TELNET_WONT,opt);
+			flags |= FLAG_ECHO; 
 			break;
 
 		default:
-			logprintf(child_pid,"TELNET: Unexpected DO option %u\n",
+			logprintf(master_pid,"TELOPT: Refusing DO option %u\n",
 				(u_char)opt);
 			sendResponse(TELNET_WONT,opt);
 			break;
@@ -172,13 +176,13 @@ u_char *parseTelopt(u_char *p, u_char *end)
 		switch(opt)
 		{
 		case TELOPT_SGA:
-			sockprintf("TELNET: ERROR: Client does not support character mode.\n");
-			childExit(1);
+			sockprintf("ERROR: Your client does not support character mode.\n");
+			masterExit(1);
 		case TELOPT_ECHO:
 			break;
 
 		default:
-			logprintf(child_pid,"TELNET: Unexpected DONT option %u\n",
+			logprintf(master_pid,"TELOPT: Unexpected DONT option %u\n",
 				(u_char)opt);
 			break;
 		}
@@ -220,37 +224,39 @@ u_char *getTermSize(u_char *p, u_char *end)
 {
 	uint16_t w1,w2;
 	uint16_t h1,h2;
-	u_char *e;
 
 	/* p should start at WIDTH1 WIDTH2 HEIGHT1 HEIGHT2 IAC SE */
 	if (end - p < 6) return NULL;
 
 	/* 255 could be duplicated so make sure we have the SE */
-	if (!(e = findSubOptEnd(p,end))) return NULL;
+	if (!(end = findSubOptEnd(p,end))) return NULL;
 
 	if (*p == 255) ++p;
-	if (p == e) return e; /* In case of buffer overrun attempt */
+	if (p == end) return end; /* In case of buffer overrun attempt */
 	w1 = *p++;
 
 	if (*p == 255) ++p;
-	if (p == e) return e;
+	if (p == end) return end;
 	w2 = *p++;
 
 	if (*p == 255) ++p;
-	if (p == e) return e;
+	if (p == end) return end;
 	h1 = *p++;
 
 	if (*p == 255) ++p;
-	if (p == e) return e;
+	if (p == end) return end;
 	h2 = *p++;
 	
 	/* 16 bit data fields are sent big endian */
 	term_width = (w1 << 8) + w2;
 	term_height = (h1 << 8) + h2;
 
-	logprintf(child_pid,"Terminal size: %d,%d\n",term_width,term_height);
-	sendWinSize();
-	return e;
+	logprintf(master_pid,"TELOPT: Terminal size = %d,%d\n",term_width,term_height);
+
+	/* Have to do this to keep shell updated as client will send NAWS
+	   when the xterm is resized */
+	notifyWinSize();
+	return end;
 }
 
 
@@ -259,7 +265,6 @@ u_char *getTermSize(u_char *p, u_char *end)
 /*** Get the terminal type: IAC SB TERM IS <terminal type> IAC SE ***/
 u_char *getTermType(u_char *p, u_char *end)
 {
-	u_char *e;
 	u_char *p2;
 
 	/* p should start at IS <terminal type> IAC SE though it could be
@@ -267,20 +272,96 @@ u_char *getTermType(u_char *p, u_char *end)
 	if (end - p < 3 || *p != TELNET_IS) return NULL;
 
 	/* Find the SE */
-	if (!(e = findSubOptEnd(p,end))) return NULL;
+	if (!(end = findSubOptEnd(p,end))) return NULL;
 
 	/* Client seems to send in uppercase, convert to lower as some
 	   programs care */
-	for(p2=++p;*p2;++p2) *p2 = tolower(*p2);
+	for(p2=++p;*p2 && p2 < end;++p2) *p2 = tolower(*p2);
 
-	logprintf(child_pid,"Terminal type: '%s'\n",p);
+	logprintf(master_pid,"TELOPT: Terminal type = \"%s\"\n",p);
 
 	/* Want it passed down to slave child processes. If there's a way to
 	   do it using ioctl() as per terminal size I can't find it. */
 	setenv("TERM",(char *)p,1);
-	got_term_type = 1;
+	flags |= FLAG_RX_TTYPE;
 
-	return e;
+	return end;
+}
+
+
+
+
+/*** Get the enviroment:
+     IAC SB NEW_ENVIRON IS/INFO \
+     [NEW_ENV_VAR/ENV_USERVAR <var name> NEW_ENV_VALUE <value>] * N
+     IAC SE ***/
+u_char *getEnviroment(u_char *p, u_char *end)
+{
+	u_char *e;
+	char *varname;
+	int get_var_name;
+	int len;
+	
+	if (*p != TELNET_IS && *p != TELNET_INFO) return NULL;
+
+	/* Find the SE */
+	if (!(end = findSubOptEnd(p,end))) return NULL;
+
+	flags |= FLAG_RX_ENV;
+
+	/* Can get an empty list so just return if this is the case */
+	++p;
+	if (!IS_VAR_START(*p)) return end;
+	get_var_name = 1;
+
+	for(e=++p;e < end;++e)
+	{
+		if (get_var_name)
+		{
+			if (*e == NEW_ENV_VALUE)
+			{
+				len = (int)(e-p);
+				if (!len)
+				{
+					/* Bail out if there's corruption */
+					logprintf(master_pid,"TELOPT: WARNING: Zero length env var name.\n");
+					return end;
+				}
+				*e = 0;
+				varname = (char *)p;
+				get_var_name = 0;
+				p = e+1;
+			}
+		}
+		else if (IS_VAR_START(*e))
+		{
+			len = (int)(e-p);
+			if (len)
+			{
+				*e = 0;
+				setenv(varname,(char *)p,1);
+				logprintf(master_pid,
+					"TELOPT: Env var = \"%s\", value = \"%s\"\n",
+					varname,p);
+
+				/* Store username for login program */
+				if (!telopt_username &&
+				    !strcmp(varname,"USER"))
+				{
+					telopt_username = strdup((char *)p);
+				}
+			}
+			else setenv(varname,"",1);
+			get_var_name = 1;
+			p = e+1;
+		}
+	}
+	if (!get_var_name)
+	{
+		/* Expecting matching value for variable */
+		logprintf(master_pid,"TELOPT: WARNING: Unexpected end of enviroment variable list.");
+	}
+	return end;
 }
 
 

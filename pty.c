@@ -8,24 +8,30 @@ int openPTYMaster()
 {
 	if ((ptym = posix_openpt(O_RDWR | O_NOCTTY)) == -1)
 	{
-		sockprintf("ERROR: posix_openpt(): %s\n",strerror(errno));
-		return 0;
+		logprintf(master_pid,"ERROR: openPTYMaster(): posix_openpt(): %s\n",
+			strerror(errno));
+		goto ERROR;
 	}
 
 	if (grantpt(ptym) == -1)
 	{
-		sockprintf("ERROR: grantpt(): %s\n",strerror(errno));
+		logprintf(master_pid,"ERROR: openPTYMaster(): grantpt(): %s\n",
+			strerror(errno));
 		close(ptym);
-		return 0;
+		goto ERROR;
 	}
 
 	if (unlockpt(ptym) == -1)
 	{
-		sockprintf("ERROR: unlockpt(): %s\n",strerror(errno));
+		logprintf(master_pid,"ERROR: openPTYMaster(): unlockpt(): %s\n",
+			strerror(errno));
 		close(ptym);
-		return 0;
 	}
-	return 1;
+	else return 1;
+
+	ERROR:
+	sockprintf("ERROR: Open PTY master failed.\n");
+	return 0;
 }
 
 
@@ -37,7 +43,9 @@ int openPTYSlave()
 {
 	if ((ptys = open((char *)ptsname(ptym),O_RDWR)) == -1)
 	{
-		sockprintf("ERROR: open(): %s\n",strerror(errno));
+		sockprintf("ERROR: Open PTY slave failed.\n");
+		logprintf(master_pid,"ERROR: openPTYSlave(): open(): %s\n",
+			strerror(errno));
 		return 0;
 	}
 	return 1;
