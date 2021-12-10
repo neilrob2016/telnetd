@@ -23,9 +23,6 @@ void sockprintf(char *fmt, ...)
 	*s2 = 0;
 
  	writeSockStr((char *)out2);
-
-	/* Only print if child process, not sub child */
-	if (getpid() == master_pid) logprintf(master_pid,(char *)out2);
 }
 
 

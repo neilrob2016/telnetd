@@ -58,6 +58,7 @@ void init()
 	flags = 0;
 	iface = NULL;
 	iface_in_addr.sin_addr.s_addr = INADDR_ANY;
+	state = STATE_NOTSET;
 }
 
 
@@ -103,6 +104,12 @@ void version()
 {
 	printf("\n*** %s ***\n\n",SVR_NAME);
 	printf("Version   : %s\n",SVR_VERSION);
+	printf("Build     : ");
+#ifdef __APPLE__
+	puts("MacOS");
+#else
+	puts("Linux/generic");
+#endif
 	printf("Build date: %s\n",SVR_BUILD_DATE);
 	printf("Parent PID: %u\n\n",getpid());
 }
@@ -114,34 +121,38 @@ void version()
 
 void printParams()
 {
+#ifndef __APPLE__
 	char **ptr;
+#endif
 	int i;
 
-	puts("Parameter values:");
-	printf("   Config file       : %s\n",PRTSTR(config_file));
-	printf("   MOTD file         : %s\n",PRTSTR(motd_file));
-	printf("   Log file          : %s\n",PRTSTR(log_file));
-	printf("   Network interface : %s\n",PRTSTR(iface));
-	printf("   Port              : %d\n",port);
-	printf("   Be daemon         : %s\n",
+	puts("\n   Parameter           Value");
+	puts("   ---------           -----");
+	printf("   Config file         %s\n",PRTSTR(config_file));
+	printf("   MOTD file           %s\n",PRTSTR(motd_file));
+	printf("   Log file            %s\n",PRTSTR(log_file));
+	printf("   Network interface   %s\n",PRTSTR(iface));
+	printf("   Port                %d\n",port);
+	printf("   Be daemon           %s\n",
 		(flags & FLAG_DAEMON) ? "YES" : "NO");
-	printf("   Hexdump           : %s\n",
+	printf("   Hexdump             %s\n",
 		(flags & FLAG_HEXDUMP) ? "YES" : "NO");
-	printf("   Telopt timeout    : %d secs\n",telopt_timeout_secs);
-	printf("   Login max attempts: %d\n",login_max_attempts);
-	printf("   Login pause       : %d secs\n",login_pause_secs);
-	printf("   Login timeout     : %d secs\n",login_timeout_secs);
-	printf("   Login prompt      : ");
+	printf("   Telopt timeout      %d secs\n",telopt_timeout_secs);
+#ifndef __APPLE__
+	printf("   Login max attempts  %d\n",login_max_attempts);
+	printf("   Login timeout       %d secs\n",login_timeout_secs);
+	printf("   Login pause         %d secs\n",login_pause_secs);
+	printf("   Login prompt        ");
 	if (login_prompt)
 		printf("\"%s\"\n",login_prompt);
 	else
 		puts(NOTSET);
-	printf("   Password prompt   : ");
+	printf("   Password prompt     ");
 	if (pwd_prompt)
 		printf("\"%s\"\n",pwd_prompt);
 	else
 		puts(NOTSET);
-	printf("   Banned users      : ");
+	printf("   Banned users        ");
 	if (banned_users_cnt)
 	{
 		for(i=0;i < banned_users_cnt;++i)
@@ -152,8 +163,8 @@ void printParams()
 		putchar('\n');
 	}
 	else puts("<none>");
-
-	printf("   Login process args: ");
+#endif
+	printf("   Login process args  ");
 	if (login_exec_argv_cnt)
 	{
                 for(i=0;i < login_exec_argv_cnt;++i)
@@ -173,7 +184,8 @@ void printParams()
 			LOGIN_PROG,
 			(flags & FLAG_APPEND_USER) ? ",[TELNET USER]" : "");
 	}
-	printf("   Shell process args: ");
+#ifndef __APPLE__
+	printf("   Shell process args  ");
 	if (shell_exec_argv)
 	{
                 for(ptr=shell_exec_argv;*ptr;++ptr)
@@ -184,6 +196,8 @@ void printParams()
 		putchar('\n');
 	}
 	else puts(NOTSET);
+#endif
+	putchar('\n');
 }
 
 
@@ -211,9 +225,10 @@ void createListenSocket()
 
 	if (iface)
 	{
-		printf("Interface \"%s\" has address %s\n",
+		printf(">>> Using interface \"%s\", address %s\n",
 			iface,inet_ntoa(iface_in_addr.sin_addr));
 	}
+	else puts(">>> Using interface INADDR_ANY");
 
 	bzero(&bind_addr,sizeof(bind_addr));
 	bind_addr.sin_family = AF_INET;
@@ -233,7 +248,7 @@ void createListenSocket()
 		perror("ERROR: createListenSocket(): listen()");
 		exit(1);
 	}
-	printf("*** Listening on port %d ***\n",port);
+	printf(">>> Listening on port %d\n",port);
 }
 
 
@@ -252,9 +267,9 @@ void mainloop()
 
 	/* Won't print if we're a daemon but whatever */
 	if (log_file)
-		printf("Redirecting output to log file \"%s\"...\n",log_file);
+		printf(">>> Redirecting output to log file \"%s\"...\n",log_file);
 	else
-		puts("Logging to stdout...");
+		puts(">>> Logging to stdout...");
 
 	logprintf(parent_pid,"*** Started ***\n");
 

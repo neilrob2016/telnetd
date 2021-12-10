@@ -40,7 +40,8 @@ void readSock()
 	/*** Loop through whats currently in the buffer ***/
 	for(p1=buff;p1 < end;++p1)
 	{
-		/* If not a telopt process the character */
+		/* If not a telopt process or we're not longer examining
+		   telopt data then treat as a normal character */
 		if (*p1 != TELNET_IAC)
 		{
 			processChar(*p1);
@@ -55,7 +56,7 @@ void readSock()
 			return;
 		}
 
-		/* If IAC twinned then client wants to print 255 */
+		/* If IAC twinned then the client wants to print char 255 */
 		if (*(p1 + 1) == TELNET_IAC)
 		{
 			processChar(255);
@@ -130,26 +131,25 @@ void hexdump(u_char *start, u_char *end, int rx)
 /*** Do something with the non telopt character we've just received ***/
 void processChar(u_char c)
 {
-	/* For some reason telnet can pass \r\0 */
+	/* Telnet passes \r\0 for newlines, ignore the \0 */
 	if (prev_c == '\r' && !c)
 	{
 		prev_c = c;
 		return;
 	}
 
-	/* Just write through to pty, no processing. */
-	if (state == STATE_SHELL)
+	switch(state)
 	{
+	case STATE_SHELL:
+		/* Just write through to pty, no processing. */
 		write(ptym,&c,1);
 		prev_c = c;
 		return;
-	}
-
-	/* Ignore \n after \r */
-	if (prev_c == '\r' && c == '\n')
-	{
-		prev_c = c;
+	case STATE_TELOPT:
+		/* Ignore any user input in this state */
 		return;
+	default:
+		break;
 	}
 	prev_c = c;
 
@@ -218,10 +218,11 @@ void processLine()
 
 			if (login_pause_secs) sleep(login_pause_secs);
 			writeSockStr(login_prompt);
-			state = STATE_LOGIN;
+			setState(STATE_LOGIN);
 			break;
 		}
 		logprintf(master_pid,"User logged in as \"%s\".\n",username);
+		setState(STATE_SHELL);
 		runSlave();
 		break;
 

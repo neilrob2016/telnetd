@@ -1,9 +1,11 @@
-# Linux only. Comment out for MacOS
-CLIB=-lcrypt
+UNAME := $(shell uname -s)
+ifeq ($(UNAME),Linux)
+	CLIB=-lcrypt
+endif
 
 CC=cc 
 
-# For 950 router build
+# ARM Linux
 #CC=aarch64-poky-linux-gcc --sysroot=/opt/fsl-imx-wayland/4.19-warrior/sysroots/aarch64-poky-linux
 
 ARGS=-g -Wall -pedantic
@@ -16,7 +18,8 @@ OBJS= \
 	io.o \
 	printf.o \
 	pty.o \
-	split.o
+	split.o \
+	misc.o
 BIN=telnetd
 
 $(BIN): build_date $(OBJS) Makefile
@@ -48,6 +51,9 @@ pty.o: pty.c globals.h
 
 split.o: split.c globals.h
 	$(CC) $(ARGS) -c split.c
+
+misc.o: misc.c globals.h
+	$(CC) $(ARGS) -c misc.c
 
 build_date:
 	echo "#define SVR_BUILD_DATE \"`date -u +'%F %T %Z'`\"" > build_date.h

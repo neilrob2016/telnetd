@@ -19,15 +19,15 @@ void runSlave()
 	char *prog;
 	int sig;
 
-	state = STATE_SHELL;
 	notifyWinSize();
 
 	/* Execute sub child to run the shell process */
 	switch((slave_pid = fork()))
 	{
 	case -1:
-		sockprintf("ERROR: Can't fork.\n");
-		logprintf(master_pid,"ERROR: execSlave(): fork(): %s\n",strerror(errno));
+		logprintf(master_pid,"ERROR: execSlave(): fork(): %s\n",
+			strerror(errno));
+		sockprintf("ERROR: Can't fork slave process.\n");
 		return;
 
 	case 0:
@@ -40,11 +40,7 @@ void runSlave()
 		   becomes the controlling tty */
 		setsid();
 
-		if (!openPTYSlave())
-		{
-			sockprintf("ERROR: Open PTY slave failed.\n");
-			exit(1);
-		}
+		if (!openPTYSlave()) exit(1);
 
 		/* Tell parent we're running */
 		kill(getppid(),SIGUSR1);
@@ -109,7 +105,11 @@ void runSlave()
 		/* Exec logon/shell */
 		execve(prog,exec_argv,environ);
 
-		sockprintf("ERROR: Exec failed: %s\n",strerror(errno));
+		/* Don't write if the log goes to stdout as that will go to
+		   the user */
+		if (log_file)
+			logprintf(slave_pid,"ERROR: Exec failed: %s\n",strerror(errno));
+		sockprintf("ERROR: Exec failed, can't continue.\n");
 		exit(1);
 
 	default:

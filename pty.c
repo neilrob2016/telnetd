@@ -30,7 +30,7 @@ int openPTYMaster()
 	else return 1;
 
 	ERROR:
-	sockprintf("ERROR: Open PTY master failed.\n");
+	sockprintf("ERROR: Open PTY master failed, can't continue.\n");
 	return 0;
 }
 
@@ -43,8 +43,8 @@ int openPTYSlave()
 {
 	if ((ptys = open((char *)ptsname(ptym),O_RDWR)) == -1)
 	{
-		sockprintf("ERROR: Open PTY slave failed.\n");
-		logprintf(master_pid,"ERROR: openPTYSlave(): open(): %s\n",
+		sockprintf("ERROR: Open PTY slave failed, can't continue.\n");
+		logprintf(slave_pid,"ERROR: openPTYSlave(): open(): %s\n",
 			strerror(errno));
 		return 0;
 	}

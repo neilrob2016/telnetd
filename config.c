@@ -19,7 +19,7 @@ void parseConfigFile()
 	int seek_nl;
 	int fd;
 
-	puts("Parsing config file...");
+	puts(">>> Parsing config file...");
 
 	if ((fd=open(config_file,O_RDWR,0666)) == -1)
 	{
@@ -137,6 +137,7 @@ void processConfigParam(char *prm, char *value, int linenum)
 
 		NUM_PARAMS
 	};
+	int yes;
 	int is_num;
 	int ivalue;
 	int exec_cnt;
@@ -158,21 +159,25 @@ void processConfigParam(char *prm, char *value, int linenum)
 	for(i=0;i < NUM_PARAMS;++i)
 	{
 		if (strcmp(prm,param[i])) continue;
+		if (is_num) yes = -1;
+		else if (!strcasecmp(value,"YES")) yes = 1;
+		else if (strcasecmp(value,"NO")) yes = 0;
+		else yes = -1;
 
 		switch(i)
 		{
 		/* Flags */
 		case PAR_BE_DAEMON:
-			if (!strcasecmp(value,"YES")) flags |= FLAG_DAEMON;
-			else if (strcasecmp(value,"NO")) goto VAL_ERROR;
+			if (yes == -1) goto VAL_ERROR;
+			if (yes) flags |= FLAG_DAEMON;
 			break;
 		case PAR_HEXDUMP:
-			if (!strcasecmp(value,"YES")) flags |= FLAG_HEXDUMP;
-			else if (strcasecmp(value,"NO")) goto VAL_ERROR;
+			if (yes == -1) goto VAL_ERROR;
+			if (yes) flags |= FLAG_HEXDUMP;
 			break;
 		case PAR_LOGIN_APPEND_USER:
-			if (!strcasecmp(value,"YES")) flags |= FLAG_APPEND_USER;
-			else if (strcasecmp(value,"NO")) goto VAL_ERROR;
+			if (yes == -1) goto VAL_ERROR;
+			if (yes) flags |= FLAG_APPEND_USER;
 			break;
 
 		/* Numeric values */
@@ -282,7 +287,7 @@ void processConfigParam(char *prm, char *value, int linenum)
 
 #ifdef __APPLE__
 	UNSUPPORTED:
-	puts("WARNING: Not supported in this build.");
+	puts("WARNING: Not supported in MacOS build.");
 #endif
 }
 
@@ -317,7 +322,7 @@ void parseInterface(char *addr)
 	/* Valid IP address or interface name? */
 	if ((iface_in_addr.sin_addr.s_addr = inet_addr(addr)) != -1) return;
 
-	iface = addr;
+	iface = strdup(addr);
 	if (getifaddrs(&addr_list) == -1)
 	{
 		perror("ERROR: parseInterface(): getifaddrs()");

@@ -55,29 +55,21 @@ u_char *parseTelopt(u_char *p, u_char *end)
 	switch(com)
 	{
 	case TELNET_BRK:
-		return p+1;
-
 	case TELNET_IP:
-		return p+1;
-
 	case TELNET_AO:
-		return p+1;
-
 	case TELNET_AYT:
-		return p+1;
-
 	case TELNET_EC:
-		return p+1;
-
 	case TELNET_EL:
-		return p+1;
-
 	case TELNET_GA:
-		return p+1;
-		
+		break;
+
 	case TELNET_SB:
 		if (len < 3) return NULL;
-
+		if (state != STATE_TELOPT)
+		{
+			logprintf(master_pid,"TELOPT: Ignoring SB option %d, wrong state.\n",opt);
+			return findSubOptEnd(p+3,end);
+		}
 		switch(opt)
 		{
 		case TELOPT_NAWS:
@@ -95,7 +87,11 @@ u_char *parseTelopt(u_char *p, u_char *end)
 
 	case TELNET_WILL:
 		if (len < 3) return NULL;
-
+		if (state != STATE_TELOPT)
+		{
+			logprintf(master_pid,"TELOPT: Ignoring WILL option %d, wrong state.\n",opt);
+			return findSubOptEnd(p+3,end);
+		}
 		switch(opt)
 		{
 		case TELOPT_NAWS:
@@ -116,29 +112,32 @@ u_char *parseTelopt(u_char *p, u_char *end)
 			sendResponse(TELNET_DONT,opt);
 			break;
 		}
-
 		return p+2;
 
 	case TELNET_WONT:
 		if (len < 3) return NULL;
-
+		if (state != STATE_TELOPT)
+		{
+			logprintf(master_pid,"TELOPT: Ignoring WONT option %d, wrong state.\n",opt);
+			return findSubOptEnd(p+3,end);
+		}
 		switch(opt)
 		{
 		case TELOPT_NAWS:
 			logprintf(master_pid,"TELOPT: Client WONT terminal size.\n");
-			sockprintf("WARNING: Your client refused to send terminal size.\n");
+			sockprintf("NOTICE: Your client refused to send terminal size.\n");
 			break;
 
 		case TELOPT_TTYPE:
 			logprintf(master_pid,"TELOPT: Client WONT terminal type.\n");
-			sockprintf("WARNING: Your client refused to send terminal type.\n");
+			sockprintf("NOTICE: Your client refused to send terminal type.\n");
 			/* So we don't keep waiting for it */
 			flags |= FLAG_RX_TTYPE;
 			break;
 
 		case TELOPT_NEW_ENVIRON:
 			logprintf(master_pid,"TELOPT: Client WONT enviroment vars.\n");
-			sockprintf("WARNING: Your client refused to send enviroment variables.\n");
+			sockprintf("NOTICE: Your client refused to send enviroment variables.\n");
 			flags |= FLAG_RX_ENV;
 			break;
 
@@ -147,10 +146,14 @@ u_char *parseTelopt(u_char *p, u_char *end)
 				(u_char)opt);
 			break;
 		}
-
 		return p+2;
 
 	case TELNET_DO:
+		if (state != STATE_TELOPT)
+		{
+			logprintf(master_pid,"TELOPT: Ignoring DO option %d, wrong state.\n",opt);
+			return findSubOptEnd(p+3,end);
+		}
 		switch(opt)
 		{
 		case TELOPT_SGA:
@@ -172,11 +175,17 @@ u_char *parseTelopt(u_char *p, u_char *end)
 
 	case TELNET_DONT:
 		if (len < 3) return NULL;
+		if (state != STATE_TELOPT)
+		{
+			logprintf(master_pid,"TELOPT: Ignoring DONT option %d, wrong state.\n",opt);
+			return findSubOptEnd(p+3,end);
+		}
 
 		switch(opt)
 		{
 		case TELOPT_SGA:
-			sockprintf("ERROR: Your client does not support character mode.\n");
+			logprintf(master_pid,"TELOPT: Client does not support character mode, exiting.\n");
+			sockprintf("ERROR: Your client does not support character mode, cannot continue.\n");
 			masterExit(1);
 		case TELOPT_ECHO:
 			break;
@@ -187,6 +196,10 @@ u_char *parseTelopt(u_char *p, u_char *end)
 			break;
 		}
 		return p+2;
+
+	default:
+		logprintf(master_pid,"TELOPT: Unexpected command/option %d\n",com);
+		break;
 	}
 
 	return p+1;
@@ -212,7 +225,7 @@ void requestSubOption(u_char sb)
 {
 	char mesg[7];
 	sprintf(mesg,"%c%c%c%c%c%c",
-		TELNET_IAC,TELNET_SB,sb,TELNET_SEND,TELNET_IAC,TELNET_SE);
+		TELNET_IAC,TELNET_SB,sb,TELQUAL_SEND,TELNET_IAC,TELNET_SE);
 	writeSock(mesg,6);
 }
 
@@ -251,7 +264,8 @@ u_char *getTermSize(u_char *p, u_char *end)
 	term_width = (w1 << 8) + w2;
 	term_height = (h1 << 8) + h2;
 
-	logprintf(master_pid,"TELOPT: Terminal size = %d,%d\n",term_width,term_height);
+	logprintf(master_pid,"TELOPT: Terminal size = %d,%d\n",
+		term_width,term_height);
 
 	/* Have to do this to keep shell updated as client will send NAWS
 	   when the xterm is resized */
@@ -269,15 +283,18 @@ u_char *getTermType(u_char *p, u_char *end)
 
 	/* p should start at IS <terminal type> IAC SE though it could be
 	   an empty string hence < 3 not < 4 */
-	if (end - p < 3 || *p != TELNET_IS) return NULL;
+	if (end - p < 3 || *p != TELQUAL_IS) return NULL;
 
 	/* Find the SE */
 	if (!(end = findSubOptEnd(p,end))) return NULL;
 
 	/* Client seems to send in uppercase, convert to lower as some
-	   programs care */
-	for(p2=++p;*p2 && p2 < end;++p2) *p2 = tolower(*p2);
-
+	   programs care and remove non printing chars that have snuck in */
+	for(p2=++p;*p2 && p2 < end;++p2)
+	{
+		if (*p2 < 32) *p2 = ' ';
+		*p2 = tolower(*p2);
+	}
 	logprintf(master_pid,"TELOPT: Terminal type = \"%s\"\n",p);
 
 	/* Want it passed down to slave child processes. If there's a way to
@@ -302,7 +319,7 @@ u_char *getEnviroment(u_char *p, u_char *end)
 	int get_var_name;
 	int len;
 	
-	if (*p != TELNET_IS && *p != TELNET_INFO) return NULL;
+	if (*p != TELQUAL_IS && *p != TELQUAL_INFO) return NULL;
 
 	/* Find the SE */
 	if (!(end = findSubOptEnd(p,end))) return NULL;
@@ -355,6 +372,8 @@ u_char *getEnviroment(u_char *p, u_char *end)
 			get_var_name = 1;
 			p = e+1;
 		}
+		/* Non printing shouldn't be in the data but just in case */
+		else if (*e < 32) *e = ' '; 
 	}
 	if (!get_var_name)
 	{

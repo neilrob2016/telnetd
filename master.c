@@ -34,9 +34,10 @@ void runMaster()
 	prev_c = 0;
 	telopt_username = NULL;
 	telneg_start = time(0);
-	state = STATE_TELOPT;
 	master_pid = getpid();
 	slave_pid = -1;
+
+	setState(STATE_TELOPT);
 
 	logprintf(master_pid,"Master process STARTED.\n");
 
@@ -45,11 +46,8 @@ void runMaster()
 	   setsid() here because we want to printf messages to terminal. */
 	setpgrp();
 
-	if (!openPTYMaster())
-	{
-		sockprintf("ERROR: Open PTY master failed.\n");
-		masterExit(1);
-	}
+	if (!openPTYMaster()) masterExit(1);
+
 	logprintf(master_pid,"PTY = %s\n",getPTYName());
 
 	signal(SIGCHLD,SIG_DFL);  /* Want to reap zombies */
@@ -344,9 +342,8 @@ void processStateTelopt()
 
 	if (!shell_exec_argv)
 	{
-		/* Exec /bin/login */
+		setState(STATE_SHELL);
 		runSlave();
-		state = STATE_SHELL;
 		return;
 	}
 
@@ -363,11 +360,11 @@ void processStateTelopt()
 	    	if (loginAllowed(telopt_username))
 			setUserNameAndPwdState(telopt_username);
 		else
-			state = STATE_LOGIN;
+			setState(STATE_LOGIN);
 
 		free(telopt_username);
 	}
-	else state = STATE_LOGIN;
+	else setState(STATE_LOGIN);
 }
 
 
@@ -378,7 +375,7 @@ void setUserNameAndPwdState(char *uname)
 	strncpy(username,uname,sizeof(username));
 	flags &= (0xFFFF ^ FLAG_ECHO);
 	writeSockStr(pwd_prompt);
-	state = STATE_PWD;
+	setState(STATE_PWD);
 }
 
 

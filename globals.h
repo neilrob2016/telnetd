@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20211207"
+#define SVR_VERSION "20211210"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -60,10 +60,7 @@
 #define HEXDUMP_CHARS  10
 #define DELETE_KEY     127
 
-/* Defined in arpa/telnet.h */
-#define TELNET_IS   TELQUAL_IS
-#define TELNET_SEND TELQUAL_SEND
-#define TELNET_INFO TELQUAL_INFO
+/* More useful macro names. Defined in arpa/telnet.h */
 #define TELNET_SE   SE
 #define TELNET_BRK  BREAK
 #define TELNET_IP   IP
@@ -97,17 +94,19 @@ enum
 
 enum
 {
-	FLAG_ECHO        = 1,
-	FLAG_DAEMON      = 2,
-	FLAG_HEXDUMP     = 4,
-	FLAG_RX_TTYPE    = 8,
-	FLAG_RX_ENV      = 16,
-	FLAG_APPEND_USER = 32
+	FLAG_ECHO          = 1,
+	FLAG_DAEMON        = 2,
+	FLAG_HEXDUMP       = 4,
+	FLAG_RX_TTYPE      = 8,
+	FLAG_RX_ENV        = 16,
+	FLAG_APPEND_USER   = 32
 };
 
 
 enum
 {
+	STATE_NOTSET,
+
 	STATE_TELOPT,
 	STATE_LOGIN,
 	STATE_PWD,
@@ -200,3 +199,7 @@ u_char *parseTelopt(u_char *p, u_char *end);
 char *splitString(char *str, char *end, char ***words, int *word_cnt);
 void  addWordToArray(char ***words, char *word, char *end, int *word_cnt);
 void  freeWords(char **words, int word_cnt);
+
+/* misc.c */
+void setState(int st);
+
