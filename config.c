@@ -169,15 +169,15 @@ void processConfigParam(char *prm, char *value, int linenum)
 		/* Flags */
 		case PAR_BE_DAEMON:
 			if (yes == -1) goto VAL_ERROR;
-			if (yes) flags |= FLAG_DAEMON;
+			if (yes) flags.daemon = 1;
 			break;
 		case PAR_HEXDUMP:
 			if (yes == -1) goto VAL_ERROR;
-			if (yes) flags |= FLAG_HEXDUMP;
+			if (yes) flags.hexdump = 1;
 			break;
 		case PAR_LOGIN_APPEND_USER:
 			if (yes == -1) goto VAL_ERROR;
-			if (yes) flags |= FLAG_APPEND_USER;
+			if (yes) flags.append_user = 1;
 			break;
 
 		/* Numeric values */

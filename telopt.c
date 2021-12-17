@@ -65,7 +65,7 @@ u_char *parseTelopt(u_char *p, u_char *end)
 
 	case TELNET_SB:
 		if (len < 3) return NULL;
-		if (state != STATE_TELOPT)
+		if (state != STATE_TELOPT && opt != TELOPT_NAWS)
 		{
 			logprintf(master_pid,"TELOPT: Ignoring SB option %d, wrong state.\n",opt);
 			return findSubOptEnd(p+3,end);
@@ -132,13 +132,13 @@ u_char *parseTelopt(u_char *p, u_char *end)
 			logprintf(master_pid,"TELOPT: Client WONT terminal type.\n");
 			sockprintf("NOTICE: Your client refused to send terminal type.\n");
 			/* So we don't keep waiting for it */
-			flags |= FLAG_RX_TTYPE;
+			flags.rx_ttype = 1;
 			break;
 
 		case TELOPT_NEW_ENVIRON:
 			logprintf(master_pid,"TELOPT: Client WONT enviroment vars.\n");
 			sockprintf("NOTICE: Your client refused to send enviroment variables.\n");
-			flags |= FLAG_RX_ENV;
+			flags.rx_env = 1;
 			break;
 
 		default:
@@ -162,7 +162,7 @@ u_char *parseTelopt(u_char *p, u_char *end)
 
 		case TELOPT_ECHO:
 			/* Ditto above */
-			flags |= FLAG_ECHO; 
+			flags.echo = 1; 
 			break;
 
 		default:
@@ -300,7 +300,7 @@ u_char *getTermType(u_char *p, u_char *end)
 	/* Want it passed down to slave child processes. If there's a way to
 	   do it using ioctl() as per terminal size I can't find it. */
 	setenv("TERM",(char *)p,1);
-	flags |= FLAG_RX_TTYPE;
+	flags.rx_ttype = 1;
 
 	return end;
 }
@@ -324,7 +324,7 @@ u_char *getEnviroment(u_char *p, u_char *end)
 	/* Find the SE */
 	if (!(end = findSubOptEnd(p,end))) return NULL;
 
-	flags |= FLAG_RX_ENV;
+	flags.rx_env = 1;
 
 	/* Can get an empty list so just return if this is the case */
 	++p;

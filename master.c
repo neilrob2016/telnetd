@@ -79,7 +79,7 @@ void runMaster()
 				processStateTelopt();
 				continue;
 			}
-			else if ((flags & FLAG_RX_TTYPE) && (flags & FLAG_RX_ENV))
+			else if (flags.rx_ttype && flags.rx_env)
 			{
 				processStateTelopt();
 				continue;
@@ -373,7 +373,7 @@ void processStateTelopt()
 void setUserNameAndPwdState(char *uname)
 {
 	strncpy(username,uname,sizeof(username));
-	flags &= (0xFFFF ^ FLAG_ECHO);
+	flags.echo = 0;
 	writeSockStr(pwd_prompt);
 	setState(STATE_PWD);
 }

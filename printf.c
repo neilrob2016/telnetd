@@ -41,7 +41,7 @@ void logprintf(pid_t pid, char *fmt, ...)
 	int i;
 
 	/* Don't print to stdout if we're a daemon */
-	if (!log_file && (flags & FLAG_DAEMON)) return;
+	if (!log_file && flags.daemon) return;
 
 	time(&now);
 	tms = localtime(&now);

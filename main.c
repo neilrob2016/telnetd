@@ -30,7 +30,7 @@ int main(int argc, char **argv)
 	parseConfigFile();
 	printParams();
 	createListenSocket();
-	if (flags & FLAG_DAEMON) beDaemon();
+	if (flags.daemon) beDaemon();
 	setUpSignals();
 	mainloop();
 	return 0;
@@ -47,7 +47,7 @@ void init()
 	login_max_attempts = LOGIN_MAX_ATTEMPTS;
 	login_pause_secs = LOGIN_PAUSE_SECS;
 	login_timeout_secs = LOGIN_TIMEOUT_SECS;
-	telopt_timeout_secs = LOGIN_TIMEOUT_SECS;
+	telopt_timeout_secs = TELOPT_TIMEOUT_SECS;
 	banned_users = NULL;
 	banned_users_cnt = 0;
 	shell_exec_argv = NULL;
@@ -55,10 +55,10 @@ void init()
 	login_exec_argv_cnt = 0;
 	motd_file = NULL;
 	log_file = NULL;
-	flags = 0;
 	iface = NULL;
 	iface_in_addr.sin_addr.s_addr = INADDR_ANY;
 	state = STATE_NOTSET;
+	bzero(&flags,sizeof(flags));
 }
 
 
@@ -133,10 +133,8 @@ void printParams()
 	printf("   Log file            %s\n",PRTSTR(log_file));
 	printf("   Network interface   %s\n",PRTSTR(iface));
 	printf("   Port                %d\n",port);
-	printf("   Be daemon           %s\n",
-		(flags & FLAG_DAEMON) ? "YES" : "NO");
-	printf("   Hexdump             %s\n",
-		(flags & FLAG_HEXDUMP) ? "YES" : "NO");
+	printf("   Be daemon           %s\n",flags.daemon ? "YES" : "NO");
+	printf("   Hexdump             %s\n",flags.hexdump ? "YES" : "NO");
 	printf("   Telopt timeout      %d secs\n",telopt_timeout_secs);
 #ifndef __APPLE__
 	printf("   Login max attempts  %d\n",login_max_attempts);
@@ -172,7 +170,7 @@ void printParams()
 			if (i) putchar(',');
 			printf("%s",login_exec_argv[i]);
 		}
-		if (flags & FLAG_APPEND_USER)
+		if (flags.append_user)
 			puts(",[TELNET USER]");
 		else
 			putchar('\n');
@@ -182,7 +180,7 @@ void printParams()
 	{
 		printf("%s%s\n",
 			LOGIN_PROG,
-			(flags & FLAG_APPEND_USER) ? ",[TELNET USER]" : "");
+			flags.append_user ? ",[TELNET USER]" : "");
 	}
 #ifndef __APPLE__
 	printf("   Shell process args  ");

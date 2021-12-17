@@ -19,8 +19,6 @@ void runSlave()
 	char *prog;
 	int sig;
 
-	notifyWinSize();
-
 	/* Execute sub child to run the shell process */
 	switch((slave_pid = fork()))
 	{
@@ -41,6 +39,7 @@ void runSlave()
 		setsid();
 
 		if (!openPTYSlave()) exit(1);
+		notifyWinSize();
 
 		/* Tell parent we're running */
 		kill(getppid(),SIGUSR1);
@@ -73,12 +72,14 @@ void runSlave()
 		else
 		{
 			logprintf(slave_pid,"Executing login process...\n");
-			if (!(flags & FLAG_APPEND_USER)) telopt_username = NULL;
+			if (!flags.append_user) telopt_username = NULL;
 
 			if (login_exec_argv)
 			{
 				if (telopt_username) 
 				{
+					sockprintf("%s%s\n",
+						login_prompt,telopt_username);
 					addWordToArray(
 						&login_exec_argv,
 						telopt_username,
@@ -89,6 +90,11 @@ void runSlave()
 			}
 			else
 			{
+				if (telopt_username)
+				{
+					sockprintf("%s%s\n",
+						login_prompt,telopt_username);
+				}
 				prog = LOGIN_PROG;
 				exec_argv = def_exec_argv;
 				exec_argv[0] = prog;
@@ -108,7 +114,10 @@ void runSlave()
 		/* Don't write if the log goes to stdout as that will go to
 		   the user */
 		if (log_file)
-			logprintf(slave_pid,"ERROR: Exec failed: %s\n",strerror(errno));
+		{
+			logprintf(slave_pid,"ERROR: Exec failed: %s\n",
+				strerror(errno));
+		}
 		sockprintf("ERROR: Exec failed, can't continue.\n");
 		exit(1);
 
@@ -125,26 +134,20 @@ void runSlave()
 
 
 
-/*** Send the window size to the pty master and store in enviroment
-     variables ***/
+/*** Send the window size to the pty master and notify the child ***/
 void notifyWinSize()
 {
 	struct winsize ws;
-	char str[10];
 
-	if (ptym == -1) return;
+	assert(ptym != -1);
 
 	bzero(&ws,sizeof(ws));
 	ws.ws_row = term_height;
 	ws.ws_col = term_width;
-
 	ioctl(ptym,TIOCSWINSZ,&ws);
 
-	/* Belt and braces */
-	snprintf(str,sizeof(str),"%u",term_width);
-	setenv("COLUMNS",str,1);
-	snprintf(str,sizeof(str),"%u",term_height);
-	setenv("LINES",str,1);
+	/* Slave won't have been created when first telopt NAWS received */
+	if (slave_pid != -1) kill(slave_pid,SIGWINCH);
 }
 
 

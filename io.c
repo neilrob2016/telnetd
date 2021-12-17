@@ -35,7 +35,7 @@ void readSock()
 	end = buff + buffpos + len;
 	buff[buffpos+len] = 0;
 
-	if (flags & FLAG_HEXDUMP) hexdump(buff+buffpos,end,1);
+	if (flags.hexdump) hexdump(buff+buffpos,end,1);
 
 	/*** Loop through whats currently in the buffer ***/
 	for(p1=buff;p1 < end;++p1)
@@ -153,7 +153,7 @@ void processChar(u_char c)
 	}
 	prev_c = c;
 
-	if (flags & FLAG_ECHO)
+	if (flags.echo)
 	{
 		switch(c)
 		{
@@ -209,7 +209,7 @@ void processLine()
 		break;
 
 	case STATE_PWD:
-		flags |= FLAG_ECHO;
+		flags.echo = 1;
 		writeSockStr("\r\n");
 		if (!checkLogin((char *)line))
 		{
@@ -321,7 +321,7 @@ void writeSock(char *data, int len)
 		}
 		bytes += l;
 	}
-	if (flags & FLAG_HEXDUMP) hexdump((u_char *)data,(u_char *)data+len,0);
+	if (flags.hexdump) hexdump((u_char *)data,(u_char *)data+len,0);
 }
 
 

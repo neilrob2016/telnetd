@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20211210"
+#define SVR_VERSION "20211217"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -91,18 +91,6 @@ enum
 	STDERR
 };
 
-
-enum
-{
-	FLAG_ECHO          = 1,
-	FLAG_DAEMON        = 2,
-	FLAG_HEXDUMP       = 4,
-	FLAG_RX_TTYPE      = 8,
-	FLAG_RX_ENV        = 16,
-	FLAG_APPEND_USER   = 32
-};
-
-
 enum
 {
 	STATE_NOTSET,
@@ -115,6 +103,15 @@ enum
 	NUM_STATES
 };
 
+struct st_flags
+{
+	unsigned echo        : 1;
+	unsigned daemon      : 1;
+	unsigned hexdump     : 1;
+	unsigned rx_ttype    : 1;
+	unsigned rx_env      : 1;
+	unsigned append_user : 1;
+};
 
 /* Config file */
 EXTERN char *iface;
@@ -132,6 +129,7 @@ EXTERN int port;
 
 /* General */
 EXTERN struct sockaddr_in iface_in_addr;
+EXTERN struct st_flags flags;
 EXTERN pid_t parent_pid;
 EXTERN char username[BUFFSIZE+1];
 EXTERN u_char buff[BUFFSIZE+1];
@@ -148,7 +146,6 @@ EXTERN int listen_sock;
 /* Child */
 EXTERN struct passwd *userinfo;
 EXTERN struct passwd god_userinfo;
-EXTERN uint16_t flags;
 EXTERN sigset_t sigmask;
 EXTERN pid_t master_pid;
 EXTERN pid_t slave_pid;
