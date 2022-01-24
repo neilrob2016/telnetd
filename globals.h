@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20211217"
+#define SVR_VERSION "20220124"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -111,6 +111,7 @@ struct st_flags
 	unsigned rx_ttype    : 1;
 	unsigned rx_env      : 1;
 	unsigned append_user : 1;
+	unsigned preserve_env: 1;
 };
 
 /* Config file */

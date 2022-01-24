@@ -125,19 +125,19 @@ u_char *parseTelopt(u_char *p, u_char *end)
 		{
 		case TELOPT_NAWS:
 			logprintf(master_pid,"TELOPT: Client WONT terminal size.\n");
-			sockprintf("NOTICE: Your client refused to send terminal size.\n");
+			sockprintf("Your client refused to send terminal size.\n");
 			break;
 
 		case TELOPT_TTYPE:
 			logprintf(master_pid,"TELOPT: Client WONT terminal type.\n");
-			sockprintf("NOTICE: Your client refused to send terminal type.\n");
+			sockprintf("Your client refused to send terminal type.\n");
 			/* So we don't keep waiting for it */
 			flags.rx_ttype = 1;
 			break;
 
 		case TELOPT_NEW_ENVIRON:
 			logprintf(master_pid,"TELOPT: Client WONT enviroment vars.\n");
-			sockprintf("NOTICE: Your client refused to send enviroment variables.\n");
+			sockprintf("Your client refused to send enviroment variables.\n");
 			flags.rx_env = 1;
 			break;
 

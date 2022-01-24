@@ -15,7 +15,7 @@ void addUtmpEntry();
 void runSlave()
 {
 	char **exec_argv;
-	char *def_exec_argv[3];
+	char *def_exec_argv[4];
 	char *prog;
 	int sig;
 
@@ -74,6 +74,7 @@ void runSlave()
 			logprintf(slave_pid,"Executing login process...\n");
 			if (!flags.append_user) telopt_username = NULL;
 
+			/* Login program and args given in .cfg? */
 			if (login_exec_argv)
 			{
 				if (telopt_username) 
@@ -98,8 +99,17 @@ void runSlave()
 				prog = LOGIN_PROG;
 				exec_argv = def_exec_argv;
 				exec_argv[0] = prog;
-				exec_argv[1] = telopt_username;
-				exec_argv[2] = NULL;
+				if (flags.preserve_env)
+				{
+					exec_argv[1] = "-p"; 
+					exec_argv[2] = telopt_username;
+					exec_argv[3] = NULL;
+				}
+				else
+				{
+					exec_argv[1] = telopt_username;
+					exec_argv[2] = NULL;
+				}
 			}
 		}
 

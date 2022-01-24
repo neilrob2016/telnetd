@@ -178,8 +178,9 @@ void printParams()
 	else if (shell_exec_argv) puts(NOTSET);
 	else
 	{
-		printf("%s%s\n",
+		printf("%s%s%s\n",
 			LOGIN_PROG,
+			flags.preserve_env ? ",-p" : "",
 			flags.append_user ? ",[TELNET USER]" : "");
 	}
 #ifndef __APPLE__

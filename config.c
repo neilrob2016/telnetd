@@ -96,6 +96,7 @@ void processConfigParam(char *prm, char *value, int linenum)
 		"be_daemon",
 		"hexdump",
 		"login_append_user",
+		"login_preserve_env",
 
 		/* Numeric values */
 		"port",
@@ -119,6 +120,7 @@ void processConfigParam(char *prm, char *value, int linenum)
 		PAR_BE_DAEMON,
 		PAR_HEXDUMP,
 		PAR_LOGIN_APPEND_USER,
+		PAR_LOGIN_PRESERVE_ENV,
 
 		PAR_PORT,
 		PAR_TELOPT_TIMEOUT_SECS,
@@ -178,6 +180,10 @@ void processConfigParam(char *prm, char *value, int linenum)
 		case PAR_LOGIN_APPEND_USER:
 			if (yes == -1) goto VAL_ERROR;
 			if (yes) flags.append_user = 1;
+			break;
+		case PAR_LOGIN_PRESERVE_ENV:
+			if (yes == -1) goto VAL_ERROR;
+			if (yes) flags.preserve_env = 1;
 			break;
 
 		/* Numeric values */
