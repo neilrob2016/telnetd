@@ -43,10 +43,15 @@ void logprintf(pid_t pid, char *fmt, ...)
 	/* Don't print to stdout if we're a daemon */
 	if (!log_file && flags.daemon) return;
 
-	time(&now);
-	tms = localtime(&now);
-	strftime(tstr,sizeof(tstr),"%F %T",tms);
-	sprintf(pre,"%s: %d: ",tstr,pid);
+	/* Only do the preamble if we have a pid */
+	if (pid)
+	{
+		time(&now);
+		tms = localtime(&now);
+		strftime(tstr,sizeof(tstr),"%F %T",tms);
+		sprintf(pre,"%s: %d: ",tstr,pid);
+	}
+	else pre[0] = 0;
 
 	va_start(args,fmt);
 	if (vasprintf(&fstr,fmt,args) == -1)
@@ -61,20 +66,19 @@ void logprintf(pid_t pid, char *fmt, ...)
 		if ((fp = fopen(log_file,"a")))
 		{
 			/* Try and get a lock. If we can't after a short time
-			   just give up */
+			   write to it anyway because the locking process may 
+			   have died */
 			fd = fileno(fp);
 			for(i=0;
-			    i < 5 && flock(fd,LOCK_EX | LOCK_NB) == EWOULDBLOCK;
+			    i < 10 && flock(fd,LOCK_EX | LOCK_NB) == EWOULDBLOCK;
 			    ++i) 
 			{
-				/* Tiny delay so user doesn't notice */
-				usleep(1000);
+				/* Small delay so user doesn't notice */
+				usleep(10000);
 			}
-			if (i < 5)
-				fprintf(fp,"%s%s",pre,fstr);
-			else
-				fprintf(stderr,"ERROR: logprintf(): Failed to get file lock.\n");
+			fprintf(fp,"%s%s",pre,fstr);
 			fclose(fp);
+			if (i < 10) flock(fd,LOCK_UN);
 		}
 		else fprintf(stderr,"ERROR: logprintf(): fopen(): %s\n",strerror(errno));
 	}

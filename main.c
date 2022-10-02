@@ -13,22 +13,22 @@
 void init();
 void parseCmdLine(int argc, char **argv);
 void version();
-void printParams();
 void createListenSocket();
-void mainloop();
 void beDaemon();
 void setUpSignals();
+void mainloop();
+void hupHandler(int sig);
 void parentSigHandler(int sig);
 
 
-/*** START ***/
+/*********************************** INIT ***********************************/
+
 int main(int argc, char **argv)
 {
 	init();
 	parseCmdLine(argc,argv);
 	version();
 	parseConfigFile();
-	printParams();
 	createListenSocket();
 	if (flags.daemon) beDaemon();
 	setUpSignals();
@@ -58,6 +58,7 @@ void init()
 	iface = NULL;
 	iface_in_addr.sin_addr.s_addr = INADDR_ANY;
 	state = STATE_NOTSET;
+	parent_pid = getpid();
 	bzero(&flags,sizeof(flags));
 }
 
@@ -81,19 +82,36 @@ void parseCmdLine(int argc, char **argv)
 			if (++i == argc) goto USAGE;
 			config_file = argv[i];
 			continue;
+		case 'l':
+		case 'r':
+			if (++i == argc) goto USAGE;
+			log_file = strdup(argv[i]);
+			flags.log_override = 1;
+			if (c == 'r') unlink(log_file);
+			continue;
 		case 'v':
-			version();
-			exit(0);
+			/* Defer it in case we want it written to a log file */
+			flags.version = 1;
+			continue;
 		default:
 			goto USAGE;
 		}
+	}
+	if (flags.version)
+	{
+		version();
+		exit(0);
 	}
 	return;
 
 	USAGE:
 	printf("Usage: %s\n"
-	       "       -c  : Configuration file. Default = %s\n"
-	       "       -v  : Print version then exit.\n",argv[0],CONFIG_FILE);
+	       "       -c             : Configuration file. Default = %s\n"
+	       "      [-l <log file>] : Overrides log file in config file.\n"
+	       "      [-r <log file>] : Same as -l except it removes the log file first if it\n"
+	       "                        already exists.\n"
+	       "      [-v           ] : Print version then exit.\n",
+		argv[0],CONFIG_FILE);
 	exit(1);
 }
 
@@ -102,101 +120,16 @@ void parseCmdLine(int argc, char **argv)
 
 void version()
 {
-	printf("\n*** %s ***\n\n",SVR_NAME);
-	printf("Version   : %s\n",SVR_VERSION);
-	printf("Build     : ");
+	logprintf(0,"\n*** %s ***\n\n",SVR_NAME);
+	logprintf(0,"Version   : %s\n",SVR_VERSION);
+	logprintf(0,"Build     : ");
 #ifdef __APPLE__
-	puts("MacOS");
+	logprintf(0,"MacOS\n");
 #else
-	puts("Linux/generic");
+	logprintf(0,"Linux/generic\n");
 #endif
-	printf("Build date: %s\n",SVR_BUILD_DATE);
-	printf("Parent PID: %u\n\n",getpid());
-}
-
-
-
-#define NOTSET    "<not set>"
-#define PRTSTR(S) (S ? S : NOTSET)
-
-void printParams()
-{
-#ifndef __APPLE__
-	char **ptr;
-#endif
-	int i;
-
-	puts("\n   Parameter           Value");
-	puts("   ---------           -----");
-	printf("   Config file         %s\n",PRTSTR(config_file));
-	printf("   MOTD file           %s\n",PRTSTR(motd_file));
-	printf("   Log file            %s\n",PRTSTR(log_file));
-	printf("   Network interface   %s\n",PRTSTR(iface));
-	printf("   Port                %d\n",port);
-	printf("   Be daemon           %s\n",flags.daemon ? "YES" : "NO");
-	printf("   Hexdump             %s\n",flags.hexdump ? "YES" : "NO");
-	printf("   Telopt timeout      %d secs\n",telopt_timeout_secs);
-#ifndef __APPLE__
-	printf("   Login max attempts  %d\n",login_max_attempts);
-	printf("   Login timeout       %d secs\n",login_timeout_secs);
-	printf("   Login pause         %d secs\n",login_pause_secs);
-	printf("   Login prompt        ");
-	if (login_prompt)
-		printf("\"%s\"\n",login_prompt);
-	else
-		puts(NOTSET);
-	printf("   Password prompt     ");
-	if (pwd_prompt)
-		printf("\"%s\"\n",pwd_prompt);
-	else
-		puts(NOTSET);
-	printf("   Banned users        ");
-	if (banned_users_cnt)
-	{
-		for(i=0;i < banned_users_cnt;++i)
-		{
-			if (i) putchar(',');
-			printf("%s",banned_users[i]);
-		}
-		putchar('\n');
-	}
-	else puts("<none>");
-#endif
-	printf("   Login process args  ");
-	if (login_exec_argv_cnt)
-	{
-                for(i=0;i < login_exec_argv_cnt;++i)
-		{
-			if (i) putchar(',');
-			printf("%s",login_exec_argv[i]);
-		}
-		if (flags.append_user)
-			puts(",[TELNET USER]");
-		else
-			putchar('\n');
-	}
-	else if (shell_exec_argv) puts(NOTSET);
-	else
-	{
-		printf("%s%s%s\n",
-			LOGIN_PROG,
-			flags.preserve_env ? ",-p" : "",
-			flags.append_user ? ",[TELNET USER]" : "");
-	}
-#ifndef __APPLE__
-	printf("   Shell process args  ");
-	if (shell_exec_argv)
-	{
-                for(ptr=shell_exec_argv;*ptr;++ptr)
-		{
-			if (ptr != shell_exec_argv) putchar(',');
-			printf("%s",*ptr);
-		}
-		putchar('\n');
-	}
-	else puts(NOTSET);
-#endif
-	putchar('\n');
+	logprintf(0,"Build date: %s\n",SVR_BUILD_DATE);
+	logprintf(0,"Parent PID: %u\n\n",getpid());
 }
 
 
@@ -210,7 +143,8 @@ void createListenSocket()
 
 	if ((listen_sock = socket(AF_INET,SOCK_STREAM,0)) == -1)
 	{
-		perror("ERROR: createListenSocket(): socket()");
+		logprintf(0,"ERROR: createListenSocket(): socket(): %s\n",
+			strerror(errno));
 		exit(1);
 	}
 
@@ -218,16 +152,17 @@ void createListenSocket()
 	if (setsockopt(
 		listen_sock,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) == -1)
 	{
-		perror("ERROR: createListenSocket(): setsockopt(SO_REUSEADDR)");
+		logprintf(0,"ERROR: createListenSocket(): setsockopt(SO_REUSEADDR): %s\n",
+			strerror(errno));
 		exit(1);
 	}
 
 	if (iface)
 	{
-		printf(">>> Using interface \"%s\", address %s\n",
+		logprintf(0,">>> Using interface \"%s\", address %s\n",
 			iface,inet_ntoa(iface_in_addr.sin_addr));
 	}
-	else puts(">>> Using interface INADDR_ANY");
+	else logprintf(0,">>> Using interface INADDR_ANY\n");
 
 	bzero(&bind_addr,sizeof(bind_addr));
 	bind_addr.sin_family = AF_INET;
@@ -238,90 +173,18 @@ void createListenSocket()
 		listen_sock,
 		(struct sockaddr *)&bind_addr,sizeof(bind_addr)) == -1)
 	{
-		perror("ERROR: createListenSocket(): bind()");
+		logprintf(0,"ERROR: createListenSocket(): bind(): %s\n",
+			strerror(errno));
 		exit(1);
 	}
 
 	if (listen(listen_sock,20) == -1)
 	{
-		perror("ERROR: createListenSocket(): listen()");
+		logprintf(0,"ERROR: createListenSocket(): listen(): %s\n",
+			strerror(errno));
 		exit(1);
 	}
-	printf(">>> Listening on port %d\n",port);
-}
-
-
-
-
-/*** Does what it says on the tin ***/
-void mainloop()
-{
-	struct linger lin;
-	struct hostent *host;
-	struct sockaddr_in ip_addr;
-	socklen_t size;
-	char *dns;
-
-	parent_pid = getpid();
-
-	/* Won't print if we're a daemon but whatever */
-	if (log_file)
-		printf(">>> Redirecting output to log file \"%s\"...\n",log_file);
-	else
-		puts(">>> Logging to stdout...");
-
-	logprintf(parent_pid,"*** Started ***\n");
-
-	size = sizeof(ip_addr);
-	lin.l_onoff = 1;
-	lin.l_linger = 1;
-
-	/* Sit in accept and just fork off a child when it returns */
-	while(1)
-	{
-		if ((sock = accept(
-			listen_sock,(struct sockaddr *)&ip_addr,&size)) == -1)
-		{
-			/* This is fairly terminal , just die */
-			logprintf(parent_pid,"ERROR: mainloop(): accept(): %s\n",
-				strerror(errno));
-			exit(1);
-		}
-
-		if (setsockopt(
-			sock,
-			SOL_SOCKET,SO_LINGER,(char *)&lin,sizeof(lin)) == -1)
-		{
-			logprintf(parent_pid,"WARNING: mainloop(): setsockopt(SO_LINGER): %s\n",
-				strerror(errno));
-		}
-		if ((host = gethostbyaddr(
-			(char *)&(ip_addr.sin_addr.s_addr),
-			sizeof(ip_addr.sin_addr.s_addr),
-			AF_INET)))
-		{
-			dns = host->h_name;
-		}
-		else dns = "<unknown>";
-
-		strcpy(ipaddr,inet_ntoa(ip_addr.sin_addr));
-		logprintf(parent_pid,"CONNECTION from %s (%s)\n",ipaddr,dns);
-
-		switch(fork())
-		{
-		case -1:
-			logprintf(parent_pid,"ERROR: mainloop(): fork(): %s\n",
-				strerror(errno));
-			break;
-		case 0:
-			close(listen_sock);
-			runMaster();
-			break;
-		default:
-			break;
-		}
-		close(sock);
-	}
+	logprintf(0,">>> Listening on port %d\n",port);
 }
 
 
@@ -336,12 +199,12 @@ void beDaemon()
 	   remains the same */
 	if (getppid() == 1) return;
 
-	printf("Becoming background daemon...\n");
+	logprintf(0,"Becoming background daemon...\n");
 
 	switch(fork())
 	{
 	case -1:
-		fprintf(stderr,"ERROR: beDaemon(): fork(): %s\n",strerror(errno));
+		logprintf(0,"ERROR: beDaemon(): fork(): %s\n",strerror(errno));
 		exit(1);
 	case 0:
 		/* Child continues */
@@ -373,8 +236,8 @@ void setUpSignals()
 	/* Not going to bother to reap in the parent process */
 	signal(SIGCHLD,SIG_IGN);
 
-	/* Ignore any hang up signals */
-	signal(SIGHUP,SIG_IGN);
+	/* SIGHUP causes a re-read of the config file */
+	signal(SIGHUP,hupHandler);
 
 	/* Block SIGUSR1 so we can sigwait() on it. Set others to point at
 	   handler */
@@ -390,10 +253,93 @@ void setUpSignals()
 
 
 
+/********************************* RUNTIME **********************************/
+
+/*** Does what it says on the tin ***/
+void mainloop()
+{
+	struct linger lin;
+	struct hostent *host;
+	struct sockaddr_in ip_addr;
+	socklen_t size;
+	char *dns;
+
+	logprintf(parent_pid,"*** Started ***\n");
+
+	size = sizeof(ip_addr);
+	lin.l_onoff = 1;
+	lin.l_linger = 1;
+
+	/* Sit in accept and just fork off a child when it returns */
+	while(1)
+	{
+		if ((sock = accept(
+			listen_sock,(struct sockaddr *)&ip_addr,&size)) == -1)
+		{
+			/* This is fairly terminal , just die */
+			logprintf(parent_pid,"ERROR: mainloop(): accept(): %s\n",
+				strerror(errno));
+			parentExit(-1);
+		}
+
+		if (setsockopt(
+			sock,
+			SOL_SOCKET,SO_LINGER,(char *)&lin,sizeof(lin)) == -1)
+		{
+			logprintf(parent_pid,"WARNING: mainloop(): setsockopt(SO_LINGER): %s\n",
+				strerror(errno));
+		}
+		if ((host = gethostbyaddr(
+			(char *)&(ip_addr.sin_addr.s_addr),
+			sizeof(ip_addr.sin_addr.s_addr),
+			AF_INET)))
+		{
+			dns = host->h_name;
+		}
+		else dns = "<unknown>";
+
+		strcpy(ipaddr,inet_ntoa(ip_addr.sin_addr));
+		logprintf(parent_pid,"CONNECTION from %s (%s)\n",ipaddr,dns);
+
+		/* Don't want children inheriting this handler */
+		signal(SIGHUP,SIG_IGN);
+
+		switch(fork())
+		{
+		case -1:
+			logprintf(parent_pid,"ERROR: mainloop(): fork(): %s\n",
+				strerror(errno));
+			break;
+		case 0:
+			close(listen_sock);
+			runMaster();
+			break;
+		default:
+			/* Reinstate handler for parent */
+			signal(SIGHUP,hupHandler);
+			break;
+		}
+		close(sock);
+	}
+}
+
+
+
+
+void hupHandler(int sig)
+{
+	logprintf(parent_pid,">>> SIGNAL %d (SIGHUP), re-reading config...\n",SIGHUP);
+	bzero(&flags,sizeof(flags));
+	flags.sighup = 1;
+	parseConfigFile();
+}
+
+
+
 
 void parentSigHandler(int sig)
 {
-	logprintf(parent_pid,"SIGNAL %d, exiting...\n",sig);
+	logprintf(parent_pid,">>> SIGNAL %d, exiting...\n",sig);
 	close(listen_sock);
-	exit(sig);
+	parentExit(sig);
 }

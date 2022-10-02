@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20220124"
+#define SVR_VERSION "20221002"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -105,22 +105,34 @@ enum
 
 struct st_flags
 {
-	unsigned echo        : 1;
-	unsigned daemon      : 1;
-	unsigned hexdump     : 1;
-	unsigned rx_ttype    : 1;
-	unsigned rx_env      : 1;
-	unsigned append_user : 1;
-	unsigned preserve_env: 1;
+	/* Command line */
+	unsigned daemon       : 1;
+	unsigned hexdump      : 1;
+	unsigned append_user  : 1;
+	unsigned preserve_env : 1;
+	unsigned log_override : 1;
+	unsigned version      : 1;
+
+	/* Runtime */
+	unsigned sighup       : 1;
+	unsigned echo         : 1;
+	unsigned rx_ttype     : 1;
+	unsigned rx_env       : 1;
 };
 
 /* Config file */
+EXTERN struct sockaddr_in iface_in_addr;
 EXTERN char *iface;
 EXTERN char *config_file;
 EXTERN char *login_prompt;
 EXTERN char *pwd_prompt;
 EXTERN char *motd_file;
+EXTERN char *log_file;
 EXTERN char **banned_users;
+EXTERN char **shell_exec_argv;
+EXTERN char **login_exec_argv;
+EXTERN int shell_exec_argv_cnt;
+EXTERN int login_exec_argv_cnt;
 EXTERN int login_max_attempts;
 EXTERN int login_pause_secs;
 EXTERN int login_timeout_secs;
@@ -129,7 +141,6 @@ EXTERN int telopt_timeout_secs;
 EXTERN int port;
 
 /* General */
-EXTERN struct sockaddr_in iface_in_addr;
 EXTERN struct st_flags flags;
 EXTERN pid_t parent_pid;
 EXTERN char username[BUFFSIZE+1];
@@ -137,7 +148,6 @@ EXTERN u_char buff[BUFFSIZE+1];
 EXTERN u_char line[BUFFSIZE+1];
 EXTERN char ptybuff[BUFFSIZE+1];
 EXTERN char ipaddr[20];
-EXTERN char *log_file;
 EXTERN int buffpos;
 EXTERN int sock;
 EXTERN int term_height;
@@ -155,11 +165,8 @@ EXTERN int ptym;
 EXTERN int ptys;
 EXTERN int attempts;
 EXTERN int line_buffpos;
-EXTERN int login_exec_argv_cnt;
 EXTERN char prev_c;
 EXTERN char *telopt_username;
-EXTERN char **shell_exec_argv;
-EXTERN char **login_exec_argv;
 
 /* config.c */
 void parseConfigFile();
@@ -196,8 +203,9 @@ u_char *parseTelopt(u_char *p, u_char *end);
 /* split.c */
 char *splitString(char *str, char *end, char ***words, int *word_cnt);
 void  addWordToArray(char ***words, char *word, char *end, int *word_cnt);
-void  freeWords(char **words, int word_cnt);
 
 /* misc.c */
 void setState(int st);
+void parentExit(int code);
+
 

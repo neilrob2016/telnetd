@@ -1,0 +1,4 @@
+allow ~ in paths
+If bad config file on SIGHUP don't quit, carry on with current settings
+Investigate readPTYMaster() IO error on Linux when client does remote close.
+Allow more than one network interface to be specified in config

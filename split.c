@@ -76,13 +76,3 @@ void addWordToArray(char ***words, char *word, char *end, int *word_cnt)
 	++*word_cnt;
 	if (end) *end = c;
 }
-
-
-
-
-void freeWords(char **words, int word_cnt)
-{
-	int i;
-	for(i=0;i < word_cnt;++i) free(words[i]);
-	free(words);
-}

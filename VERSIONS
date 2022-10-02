@@ -1,0 +1,35 @@
+
+Sept 2021
+=========
+- Initial version
+
+
+20211207
+========
+- A huge amount of changes including replacing command line arguments with a 
+  config file in order to make it more polished and professional.
+
+
+20211210
+========
+- More updates
+
+
+20211217
+========
+- Fixed bug whereby terminal window size changes were not being propagated
+
+
+20220124
+========
+- Now can optionally pass -p to login program so it preserves enviroment 
+  variables.
+
+
+20221002
+========
+- Sending a SIGHUP to the main parent causes it to re-read the config file.
+- Added -l and -r command line parameters
+- Added "log_file_rm" config file parameter.
+- Fixed bug where advisory log file locks weren't being unlocked.
+- Minor code updates.
