@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20221002"
+#define SVR_VERSION "20221007"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -48,6 +48,7 @@
 #define LOGIN_TIMEOUT_SECS  20
 #define LOGIN_MAX_ATTEMPTS  3
 #define TELOPT_TIMEOUT_SECS 2
+#define LOG_FILE_MAX_FAILS  2
 
 #ifdef __APPLE__
 #define LOGIN_PROG     "/usr/bin/login"
@@ -106,18 +107,19 @@ enum
 struct st_flags
 {
 	/* Command line */
-	unsigned daemon       : 1;
-	unsigned hexdump      : 1;
-	unsigned append_user  : 1;
-	unsigned preserve_env : 1;
-	unsigned log_override : 1;
-	unsigned version      : 1;
+	unsigned daemon             : 1;
+	unsigned hexdump            : 1;
+	unsigned append_user        : 1;
+	unsigned preserve_env       : 1;
+	unsigned log_file_override  : 1;
+	unsigned log_fails_override : 1;
+	unsigned version            : 1;
 
 	/* Runtime */
-	unsigned sighup       : 1;
-	unsigned echo         : 1;
-	unsigned rx_ttype     : 1;
-	unsigned rx_env       : 1;
+	unsigned sighup   : 1;
+	unsigned echo     : 1;
+	unsigned rx_ttype : 1;
+	unsigned rx_env   : 1;
 };
 
 /* Config file */
@@ -138,6 +140,7 @@ EXTERN int login_pause_secs;
 EXTERN int login_timeout_secs;
 EXTERN int banned_users_cnt;
 EXTERN int telopt_timeout_secs;
+EXTERN int log_file_max_fails;
 EXTERN int port;
 
 /* General */
@@ -153,6 +156,7 @@ EXTERN int sock;
 EXTERN int term_height;
 EXTERN int term_width;
 EXTERN int listen_sock;
+EXTERN int log_file_fail_cnt;
 
 /* Child */
 EXTERN struct passwd *userinfo;

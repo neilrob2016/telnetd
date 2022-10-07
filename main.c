@@ -53,6 +53,8 @@ void init()
 	shell_exec_argv = NULL;
 	login_exec_argv = NULL;
 	login_exec_argv_cnt = 0;
+	log_file_max_fails = LOG_FILE_MAX_FAILS;
+	log_file_fail_cnt = 0;
 	motd_file = NULL;
 	log_file = NULL;
 	iface = NULL;
@@ -76,22 +78,29 @@ void parseCmdLine(int argc, char **argv)
 		if (argv[i][0] != '-' || strlen(argv[i]) != 2) goto USAGE;
 		c = argv[i][1];
 
+		if (c == 'v')
+		{
+			/* Defer it in case we want it written to the log */
+			flags.version = 1;
+			continue;
+		}
+		if (++i == argc) goto USAGE;
+
 		switch(c)
 		{
 		case 'c':
-			if (++i == argc) goto USAGE;
 			config_file = argv[i];
+			continue;
+		case 'f':
+			if ((log_file_max_fails = atoi(argv[i])) < 0)
+				goto USAGE;
+			flags.log_fails_override = 1;
 			continue;
 		case 'l':
 		case 'r':
-			if (++i == argc) goto USAGE;
 			log_file = strdup(argv[i]);
-			flags.log_override = 1;
+			flags.log_file_override = 1;
 			if (c == 'r') unlink(log_file);
-			continue;
-		case 'v':
-			/* Defer it in case we want it written to a log file */
-			flags.version = 1;
 			continue;
 		default:
 			goto USAGE;
@@ -106,12 +115,14 @@ void parseCmdLine(int argc, char **argv)
 
 	USAGE:
 	printf("Usage: %s\n"
-	       "       -c             : Configuration file. Default = %s\n"
-	       "      [-l <log file>] : Overrides log file in config file.\n"
-	       "      [-r <log file>] : Same as -l except it removes the log file first if it\n"
-	       "                        already exists.\n"
-	       "      [-v           ] : Print version then exit.\n",
-		argv[0],CONFIG_FILE);
+	       "       -c            : Configuration file. Default = %s\n"
+	       "       -l <log file> : Overrides log file in config file.\n"
+	       "       -r <log file> : Same as -l except it removes the log file first if it\n"
+	       "                       already exists.\n"
+	       "       -f <count>    : Maximum number of log file write fails before reverting\n"
+	       "                       back to logging to stdout.\n"
+	       "       -v            : Print version then exit.\n"
+	       "All arguments are optional.\n",argv[0],CONFIG_FILE);
 	exit(1);
 }
 

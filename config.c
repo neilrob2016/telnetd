@@ -22,7 +22,9 @@ void freeArray(char **words, int word_cnt);
 /*** If the config file is bad parseConfigFile() or processConfigParam() will 
      terminate the process even if we're re-reading via SIGHUP as rescuing the
      system from a partially parsed config is a lot of hassle involving temp 
-     config variables */
+     config variables. logprintf(0,... because only the parent process runs
+     the following functions and we don't want the preamble printed in the
+     boot up messages or when reparsing the config. */
 void parseConfigFile()
 {
 	struct stat fs;
@@ -145,6 +147,7 @@ void processConfigParam(char *param, char *value, int linenum)
 		/* Numeric values */
 		"port",
 		"telopt_timeout_secs",
+		"log_file_max_fails",
 		"login_max_attempts",
 		"login_timeout_secs",
 		"login_pause_secs",
@@ -169,6 +172,7 @@ void processConfigParam(char *param, char *value, int linenum)
 
 		PARAM_PORT,
 		PARAM_TELOPT_TIMEOUT_SECS,
+		PARAM_LOG_FILE_MAX_FAILS,
 		PARAM_LOGIN_MAX_ATTEMPTS,
 		PARAM_LOGIN_TIMEOUT_SECS,
 		PARAM_LOGIN_PAUSE_SECS,
@@ -247,6 +251,11 @@ void processConfigParam(char *param, char *value, int linenum)
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			telopt_timeout_secs = ivalue;
 			break;
+		case PARAM_LOG_FILE_MAX_FAILS:
+			if (!is_num || ivalue < 0) goto VAL_ERROR;
+			if (flags.log_fails_override) goto OVERRIDE;
+			log_file_max_fails = ivalue;
+			break;
 #ifdef __APPLE__
 		case PARAM_LOGIN_MAX_ATTEMPTS:
 		case PARAM_LOGIN_TIMEOUT_SECS:
@@ -322,11 +331,7 @@ void processConfigParam(char *param, char *value, int linenum)
 		case PARAM_LOG_FILE:
 		case PARAM_LOG_FILE_RM:
 			if (flags.sighup) goto IGNORE_WARNING;
-			if (flags.log_override)
-			{
-				logprintf(0,"WARNING: Parameter \"%s\" overridden by -l/-r option on command line.\n",param);
-				return;
-			}
+			if (flags.log_file_override) goto OVERRIDE;
 
 			/* Print OK before setting the log file or at startup 
 			   we'll have the "Line" number on stdout and the OK
@@ -364,9 +369,14 @@ void processConfigParam(char *param, char *value, int linenum)
 	logprintf(0,"WARNING: Parameter \"%s\" ignored - valid at startup only.\n",param);
 	return;
 	
+	OVERRIDE:
+	logprintf(0,"WARNING: Parameter \"%s\" overridden by command line argument.\n",param);
+	return;
+
 #ifdef __APPLE__
 	UNSUPPORTED:
 	logprintf(0,"WARNING: Not supported in a MacOS build.\n");
+	return;
 #endif
 }
 
@@ -441,6 +451,7 @@ void printParams()
 	logprintf(0,"    Config file       : %s\n",PRTSTR(config_file));
 	logprintf(0,"    MOTD file         : %s\n",PRTSTR(motd_file));
 	logprintf(0,"    Log file          : %s\n",PRTSTR(log_file));
+	logprintf(0,"    Log file max fails: %d\n",log_file_max_fails);
 	logprintf(0,"    Network interface : %s\n",PRTSTR(iface));
 	logprintf(0,"    Port              : %d\n",port);
 	logprintf(0,"    Telopt timeout    : %d secs\n",telopt_timeout_secs);

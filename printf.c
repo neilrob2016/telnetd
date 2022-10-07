@@ -80,7 +80,16 @@ void logprintf(pid_t pid, char *fmt, ...)
 			fclose(fp);
 			if (i < 10) flock(fd,LOCK_UN);
 		}
-		else fprintf(stderr,"ERROR: logprintf(): fopen(): %s\n",strerror(errno));
+		else
+		{
+			printf("ERROR: logprintf(): fopen(): %s\n",strerror(errno));
+			if (++log_file_fail_cnt == log_file_max_fails)
+			{
+				printf("WARNING: Log file max write fails (%d) reached.\n",log_file_max_fails);
+				puts(">>> Redirecting output to stdout...");
+				log_file = NULL;
+			}
+		}
 	}
 	else 
 	{

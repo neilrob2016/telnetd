@@ -33,3 +33,8 @@ Sept 2021
 - Added "log_file_rm" config file parameter.
 - Fixed bug where advisory log file locks weren't being unlocked.
 - Minor code updates.
+
+
+20221007
+========
+- Added log_file_max_fails config file option and -f command line argument.
