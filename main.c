@@ -44,6 +44,9 @@ void init()
 	port = PORT;
 	login_prompt = NULL;
 	pwd_prompt = NULL;
+	login_incorrect_msg = NULL;
+	login_max_attempts_msg = NULL;
+	banned_user_msg = NULL;
 	login_max_attempts = LOGIN_MAX_ATTEMPTS;
 	login_pause_secs = LOGIN_PAUSE_SECS;
 	login_timeout_secs = LOGIN_TIMEOUT_SECS;

@@ -3,7 +3,7 @@
 void hexdump(u_char *start, u_char *end, int rx);
 void processChar(u_char c);
 void processLine();
-int  checkLogin(char *password);
+int  validateLogin(char *password);
 
 
 /*** Read from the socket and call processChar() function ***/
@@ -25,7 +25,8 @@ void readSock()
 	case -1:
 		logprintf(master_pid,"ERROR: readSock(): %s\n",strerror(errno));
 		masterExit(1);
-
+		/* Will never return but break keeps compiler happy */
+		break;
 	case 0:
 		logprintf(master_pid,"CONNECTION CLOSED by remote client\n");
 		masterExit(0);
@@ -211,10 +212,13 @@ void processLine()
 	case STATE_PWD:
 		flags.echo = 1;
 		writeSockStr("\r\n");
-		if (!checkLogin((char *)line))
+		if (!validateLogin((char *)line))
 		{
-			writeSockStr("Login incorrect.\r\n");
-			checkLoginAttempts();
+			if (checkLoginAttempts())
+			{
+				writeSockStr(login_incorrect_msg);
+				writeSockStr("\r\n");
+			}
 
 			if (login_pause_secs) sleep(login_pause_secs);
 			writeSockStr(login_prompt);
@@ -237,8 +241,9 @@ void processLine()
 
 
 /*** None of this works on MacOS which is why the shell options are ifndef'd 
-     out in parseCmdLine() ***/
-int checkLogin(char *password)
+     out in parseCmdLine(). The reason for this is MacOS uses PAM to 
+     authenticate and the PAM API is PITA to use ***/
+int validateLogin(char *password)
 {
 #ifdef __APPLE__
 	return 0;
@@ -258,7 +263,7 @@ int checkLogin(char *password)
 	{
 		if (!(spwd = getspnam(userinfo->pw_name)))
 		{
-			sockprintf("ERROR: checkLogin(): getspnam(): %s\n",strerror(errno));
+			sockprintf("ERROR: validateLogin(): getspnam(): %s\n",strerror(errno));
 			return 0;
 		}
 		pwd = spwd->sp_pwdp;
@@ -281,7 +286,7 @@ int checkLogin(char *password)
 		hash = pwd + 2;
 	}
 	if (!(cry = crypt(password,salt)))
-		logprintf(master_pid,"ERROR: checkLogin(): crypt() returned NULL");
+		logprintf(master_pid,"ERROR: validateLogin(): crypt() returned NULL");
 	free(salt);
 	return (cry ? !strcmp(cry,pwd) : 0);
 #endif

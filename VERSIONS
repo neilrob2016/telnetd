@@ -38,3 +38,11 @@ Sept 2021
 20221007
 ========
 - Added log_file_max_fails config file option and -f command line argument.
+
+
+20221018
+========
+- Added login_incorrect_msg, login_max_attempts_msg and banned_user_msg
+  config options for Linux
+- Added parsing of ~ (tilda) in config paths. Eg motd_file
+- Minor bug fixes

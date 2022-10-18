@@ -388,9 +388,11 @@ int loginAllowed(char *uname)
 	{
 		if (!strcmp(banned_users[i],uname)) 
 		{
-			writeSockStr("Login denied.\r\n");
-			checkLoginAttempts();
-
+			if (checkLoginAttempts())
+			{
+				writeSockStr(banned_user_msg);
+				writeSockStr("\r\n");
+			}
 			writeSockStr(login_prompt);
 			logprintf(master_pid,"WARNING: Attempted login of banned user \"%s\"\n",uname);
 			return 0;
@@ -402,14 +404,18 @@ int loginAllowed(char *uname)
 
 
 
-void checkLoginAttempts()
+int checkLoginAttempts()
 {
 	if (++attempts >= login_max_attempts)
 	{
-		writeSockStr("\r\n\nMaximum login attempts reached.\r\n\n");
+		writeSockStr("\r\n");
+		writeSockStr(login_max_attempts_msg);
+		writeSockStr("\r\n");
 		logprintf(master_pid,"Maximum login attempts reached.\n");
 		masterExit(0);
+		return 0;
 	}
+	return 1;
 }
 
 
@@ -423,10 +429,13 @@ void readPTYMaster()
 	switch((len = read(ptym,ptybuff,BUFFSIZE)))
 	{
 	case -1:
-		/* Linux returns an error if slave end closes rather than 0.
-		   Print it anyway just in case. */
-		logprintf(master_pid,"ERROR: readPTYMaster(): read(): %s\n",
-			strerror(errno));
+		/* Linux returns I/O error when slave process exits first. 
+		   Ignore this, just print others */
+		if (errno != EIO)
+		{
+			logprintf(master_pid,"ERROR: readPTYMaster(): read(): %s\n",
+				strerror(errno));
+		}
 		/* Fall through */
 	case 0:
 		/* Read nothing, slave has exited */

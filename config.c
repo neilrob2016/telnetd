@@ -1,16 +1,18 @@
 #include "globals.h"
 
-#define CHECK_STR_PARAM(P) \
+#define SET_STR_PARAM(P) \
 	if (P) \
 	{ \
 		if (flags.sighup) \
 			free(P); \
 		else \
 			goto ALREADY_SET_ERROR; \
-	}
+	} \
+	P = strdup(value);
 
 
 void processConfigParam(char *param, char *value, int linenum);
+void parsePath(char **path);
 #ifndef __APPLE__
 void parseBannedUsers(char *list);
 #endif
@@ -125,8 +127,16 @@ void parseConfigFile()
 	}
 	munmap(map_start,fs.st_size+1);
 
-	if (!login_prompt) login_prompt = LOGIN_PROMPT;
-	if (!pwd_prompt) pwd_prompt = PWD_PROMPT;
+	/* Need strdup otherwise there'll be a crash if we free them
+	   after a SIGHUP */
+	if (!login_prompt) login_prompt = strdup(LOGIN_PROMPT);
+	if (!pwd_prompt) pwd_prompt = strdup(PWD_PROMPT);
+	if (!login_incorrect_msg)
+		login_incorrect_msg = strdup(LOGIN_INCORRECT_MSG);
+	if (!login_max_attempts_msg)
+		login_max_attempts_msg = strdup(LOGIN_MAX_ATTEMPTS_MSG);
+	if (!banned_user_msg)
+		banned_user_msg = strdup(BANNED_USER_MSG);
 
 	printParams();
 }
@@ -156,20 +166,27 @@ void processConfigParam(char *param, char *value, int linenum)
 		"network_interface",
 		"login_program",
 		"login_prompt",
+		"login_incorrect_msg",
+		"login_max_attempts_msg",
+
 		"pwd_prompt",
 		"shell_program",
 		"banned_users",
+		"banned_user_msg",
 		"motd_file",
+
 		"log_file",
 		"log_file_rm"
 	};
 	enum
 	{
+		/* Flags */
 		PARAM_BE_DAEMON,
 		PARAM_HEXDUMP,
 		PARAM_LOGIN_APPEND_USER,
 		PARAM_LOGIN_PRESERVE_ENV,
 
+		/* Numeric */
 		PARAM_PORT,
 		PARAM_TELOPT_TIMEOUT_SECS,
 		PARAM_LOG_FILE_MAX_FAILS,
@@ -177,13 +194,19 @@ void processConfigParam(char *param, char *value, int linenum)
 		PARAM_LOGIN_TIMEOUT_SECS,
 		PARAM_LOGIN_PAUSE_SECS,
 
+		/* Strings */
 		PARAM_NETWORK_INTERFACE,
 		PARAM_LOGIN_PROGRAM,
 		PARAM_LOGIN_PROMPT,
+		PARAM_LOGIN_INCORRECT_MSG,
+		PARAM_LOGIN_MAX_ATTEMPTS_MSG,
+
 		PARAM_PWD_PROMPT,
 		PARAM_SHELL_PROGRAM,
 		PARAM_BANNED_USERS,
+		PARAM_BANNED_USER_MSG,
 		PARAM_MOTD_FILE,
+
 		PARAM_LOG_FILE,
 		PARAM_LOG_FILE_RM,
 
@@ -194,6 +217,7 @@ void processConfigParam(char *param, char *value, int linenum)
 	int yes;
 	int i;
 	char *ptr;
+	char *tmp;
 
 	logprintf(0,"    Line %-2d: \"%s\": ",linenum,param);
 
@@ -225,14 +249,17 @@ void processConfigParam(char *param, char *value, int linenum)
 			if (yes == -1) goto VAL_ERROR;
 			flags.daemon = yes;
 			break;
+
 		case PARAM_HEXDUMP:
 			if (yes == -1) goto VAL_ERROR;
 			flags.hexdump = yes;
 			break;
+
 		case PARAM_LOGIN_APPEND_USER:
 			if (yes == -1) goto VAL_ERROR;
 			flags.append_user = yes;
 			break;
+
 		case PARAM_LOGIN_PRESERVE_ENV:
 			if (yes == -1) goto VAL_ERROR;
 			flags.preserve_env = yes;
@@ -247,10 +274,12 @@ void processConfigParam(char *param, char *value, int linenum)
 				goto VAL_ERROR;
 			port = ivalue;
 			break;
+
 		case PARAM_TELOPT_TIMEOUT_SECS:
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			telopt_timeout_secs = ivalue;
 			break;
+
 		case PARAM_LOG_FILE_MAX_FAILS:
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			if (flags.log_fails_override) goto OVERRIDE;
@@ -266,10 +295,12 @@ void processConfigParam(char *param, char *value, int linenum)
 			if (!is_num || ivalue < 1) goto VAL_ERROR;
 			login_max_attempts = ivalue;
 			break;
+
 		case PARAM_LOGIN_TIMEOUT_SECS:
 			if (!is_num || ivalue < 1) goto VAL_ERROR;
 			login_timeout_secs = ivalue;
 			break;
+
 		case PARAM_LOGIN_PAUSE_SECS:
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			login_pause_secs = ivalue;
@@ -280,6 +311,7 @@ void processConfigParam(char *param, char *value, int linenum)
 			if (flags.sighup) goto IGNORE_WARNING;
 			parseInterface(value);
 			break;
+
 		case PARAM_LOGIN_PROGRAM:
 			if (shell_exec_argv) goto EXCL_ERROR;
 			if (login_exec_argv) goto ALREADY_SET_ERROR;
@@ -291,22 +323,39 @@ void processConfigParam(char *param, char *value, int linenum)
 				logprintf(0,"ERROR: Empty or invalid login_program string on line %d.\n",linenum);
 				parentExit(-1);
 			}
+			parsePath(&login_exec_argv[0]);
 			break;
 #ifdef __APPLE__
 		case PARAM_LOGIN_PROMPT:
+		case PARAM_LOGIN_INCORRECT_MSG:
+		case PARAM_LOGIN_MAX_ATTEMPTS_MSG:
 		case PARAM_PWD_PROMPT:
-		case PARAM_SHELL_PROGRAM:
 		case PARAM_BANNED_USERS:
+		case PARAM_BANNED_USER_MSG:
 			goto UNSUPPORTED;
+		case PARAM_SHELL_PROGRAM:
+			/* Fail here because user is expecting a particular
+			   program to be spawned, not just /bin/login */
+			logprintf(0,"ERROR: Not supported in a MacOS build.\n");
+			parentExit(-1);
+			break;
 #else
 		case PARAM_LOGIN_PROMPT:
-			CHECK_STR_PARAM(login_prompt);
-			login_prompt = strdup(value);
+			SET_STR_PARAM(login_prompt);
 			break;
+
+		case PARAM_LOGIN_INCORRECT_MSG:
+			SET_STR_PARAM(login_incorrect_msg);
+			break;
+
+		case PARAM_LOGIN_MAX_ATTEMPTS_MSG:
+			SET_STR_PARAM(login_max_attempts_msg);
+			break;
+
 		case PARAM_PWD_PROMPT:
-			CHECK_STR_PARAM(pwd_prompt);
-			pwd_prompt = strdup(value);
+			SET_STR_PARAM(pwd_prompt);
 			break;
+
 		case PARAM_SHELL_PROGRAM:
 			if (login_exec_argv) goto EXCL_ERROR;
 			if (shell_exec_argv) goto ALREADY_SET_ERROR;
@@ -318,16 +367,24 @@ void processConfigParam(char *param, char *value, int linenum)
 				logprintf(0,"ERROR: Empty or invalid shell_program string on line %d.\n",linenum);
 				parentExit(-1);
 			}
+			parsePath(&shell_exec_argv[0]);
 			break;
+
 		case PARAM_BANNED_USERS:
 			if (banned_users) goto ALREADY_SET_ERROR;
 			parseBannedUsers(value);
 			break;
+
+		case PARAM_BANNED_USER_MSG:
+			if (banned_user_msg) goto ALREADY_SET_ERROR;
+			banned_user_msg = strdup(value);
+			break;
 #endif
 		case PARAM_MOTD_FILE:
-			CHECK_STR_PARAM(motd_file);
-			motd_file = strdup(value);
+			SET_STR_PARAM(motd_file);
+			parsePath(&motd_file);
 			break;
+
 		case PARAM_LOG_FILE:
 		case PARAM_LOG_FILE_RM:
 			if (flags.sighup) goto IGNORE_WARNING;
@@ -337,10 +394,13 @@ void processConfigParam(char *param, char *value, int linenum)
 			   we'll have the "Line" number on stdout and the OK
 			   in the log file */
 			logprintf(0,"OK\n");
-			logprintf(0,">>> Redirecting output to \"%s\"...\n",value);
-			log_file = strdup(value);
+			tmp = strdup(value);
+			parsePath(&tmp);
+			logprintf(0,">>> Redirecting output to \"%s\"...\n",tmp);
+			log_file = tmp;
 			if (i == PARAM_LOG_FILE_RM) unlink(log_file);
 			return;
+
 		default:
 			assert(0);
 		}
@@ -379,6 +439,74 @@ void processConfigParam(char *param, char *value, int linenum)
 	return;
 #endif
 }
+
+
+
+
+/*** Parse the path for tilda paths. eg: ~ or ~fred ***/
+void parsePath(char **path)
+{
+	static char *home_dir = NULL;
+	struct passwd *pwd;
+	char *str;
+	char *ptr;
+	char *dir;
+	char *newpath;
+	int slash;
+
+	str = *path;
+
+	/* Only deal with tilda if its the first character */
+	if (str[0] != '~') return;
+
+	++str;
+
+	/* Get end of first path section */
+	for(ptr=str,slash=0;*ptr;++ptr)
+	{
+		if (*ptr == '/')
+		{
+			slash = 1;
+			break;
+		}
+	}
+	*ptr = 0;
+
+	/* Can have ~ or ~<user> */
+	if (isalpha(*str))
+	{
+		pwd = getpwnam(str);
+		if (!pwd)
+		{
+			logprintf(0,"ERROR: parsePath(): Cannot get home directory of user \"%s\".\n",str);
+			parentExit(-1);
+		}
+		dir = pwd->pw_dir;
+	}
+	else
+	{
+		if (!home_dir)
+		{
+			pwd = getpwuid(getuid());
+			if (!pwd || !pwd->pw_dir)
+			{
+				logprintf(0,"ERROR: parsePath(): Cannot get home directory for user id %d.\n",getuid());
+				parentExit(-1);
+			}
+			home_dir = strdup(pwd->pw_dir);
+		}
+		dir = home_dir;
+	}
+	
+	/* Set new path */
+	if (slash)
+		asprintf(&newpath,"%s/%s",dir,ptr+1);
+	else
+		newpath = strdup(dir);
+	free(*path);
+	*path = newpath;
+}
+
 
 
 
@@ -446,46 +574,20 @@ void printParams()
 	int i;
 
 	/* Don't need parent id as we're doing short log lines */
-	logprintf(0,"\n    Parameter           Value\n");
-	logprintf(0,"    ---------           -----\n");
-	logprintf(0,"    Config file       : %s\n",PRTSTR(config_file));
-	logprintf(0,"    MOTD file         : %s\n",PRTSTR(motd_file));
-	logprintf(0,"    Log file          : %s\n",PRTSTR(log_file));
-	logprintf(0,"    Log file max fails: %d\n",log_file_max_fails);
-	logprintf(0,"    Network interface : %s\n",PRTSTR(iface));
-	logprintf(0,"    Port              : %d\n",port);
-	logprintf(0,"    Telopt timeout    : %d secs\n",telopt_timeout_secs);
-	logprintf(0,"    Be daemon         : %s\n",flags.daemon ? "YES" : "NO");
-	logprintf(0,"    Hexdump           : %s\n",flags.hexdump ? "YES" : "NO");
-	logprintf(0,"    Login append user : %s\n",flags.append_user ? "YES" : "NO");
-	logprintf(0,"    Login preserve env: %s\n",flags.preserve_env ? "YES" : "NO");
-#ifndef __APPLE__
-	logprintf(0,"    Login max attempts: %d\n",login_max_attempts);
-	logprintf(0,"    Login timeout     : %d secs\n",login_timeout_secs);
-	logprintf(0,"    Login pause       : %d secs\n",login_pause_secs);
-	logprintf(0,"    Login prompt      : ");
-	if (login_prompt)
-		logprintf(0,"\"%s\"\n",login_prompt);
-	else
-		logprintf(0,NOTSET);
-	logprintf(0,"    Password prompt   : ");
-	if (pwd_prompt)
-		logprintf(0,"\"%s\"\n",pwd_prompt);
-	else
-		logprintf(0,NOTSET);
-	logprintf(0,"    Banned users      : ");
-	if (banned_users_cnt)
-	{
-		for(i=0;i < banned_users_cnt;++i)
-		{
-			if (i) logprintf(0,",");
-			logprintf(0,"%s",banned_users[i]);
-		}
-		logprintf(0,"\n");
-	}
-	else logprintf(0,"<none>\n");
-#endif
-	logprintf(0,"    Login process args: ");
+	logprintf(0,"\n    Parameter               Value\n");
+	logprintf(0,"    =========               =====\n");
+	logprintf(0,"    Config file           : %s\n",PRTSTR(config_file));
+	logprintf(0,"    MOTD file             : %s\n",PRTSTR(motd_file));
+	logprintf(0,"    Log file              : %s\n",PRTSTR(log_file));
+	logprintf(0,"    Log file max wrt fails: %d\n",log_file_max_fails);
+	logprintf(0,"    Network interface     : %s\n",PRTSTR(iface));
+	logprintf(0,"    Port                  : %d\n",port);
+	logprintf(0,"    Telopt timeout        : %d secs\n",telopt_timeout_secs);
+	logprintf(0,"    Be daemon             : %s\n",flags.daemon ? "YES" : "NO");
+	logprintf(0,"    Hexdump               : %s\n",flags.hexdump ? "YES" : "NO");
+	logprintf(0,"    Login append user     : %s\n",flags.append_user ? "YES" : "NO");
+	logprintf(0,"    Login preserve env    : %s\n",flags.preserve_env ? "YES" : "NO");
+	logprintf(0,"    Login process args    : ");
 	if (login_exec_argv_cnt)
 	{
                 for(i=0;i < login_exec_argv_cnt;++i)
@@ -507,7 +609,7 @@ void printParams()
 			flags.append_user ? ",[TELNET USER]" : "");
 	}
 #ifndef __APPLE__
-	logprintf(0,"    Shell process args: ");
+	logprintf(0,"    Shell process args    : ");
 	if (shell_exec_argv)
 	{
                 for(ptr=shell_exec_argv;*ptr;++ptr)
@@ -518,6 +620,33 @@ void printParams()
 		logprintf(0,"\n");
 	}
 	else logprintf(0,NOTSET);
+	logprintf(0,"    Login prompt          : ");
+	if (login_prompt)
+		logprintf(0,"\"%s\"\n",login_prompt);
+	else
+		logprintf(0,NOTSET);
+	logprintf(0,"    Password prompt       : ");
+	if (pwd_prompt)
+		logprintf(0,"\"%s\"\n",pwd_prompt);
+	else
+		logprintf(0,NOTSET);
+	logprintf(0,"    Login incorrect msg   : \"%s\"\n",login_incorrect_msg);
+	logprintf(0,"    Login max attempts msg: \"%s\"\n",login_max_attempts_msg);
+	logprintf(0,"    Login max attempts    : %d\n",login_max_attempts);
+	logprintf(0,"    Login timeout         : %d secs\n",login_timeout_secs);
+	logprintf(0,"    Login pause           : %d secs\n",login_pause_secs);
+	logprintf(0,"    Banned users          : ");
+	if (banned_users_cnt)
+	{
+		for(i=0;i < banned_users_cnt;++i)
+		{
+			if (i) logprintf(0,",");
+			logprintf(0,"%s",banned_users[i]);
+		}
+		logprintf(0,"\n");
+	}
+	else logprintf(0,"<none>\n");
+	logprintf(0,"    Banned user message   : \"%s\"\n",banned_user_msg);
 #endif
 	logprintf(0,"\n");
 }
