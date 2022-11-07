@@ -29,14 +29,14 @@ void runSlave()
 		return;
 
 	case 0:
-		slave_pid = getpid();
-
 		/* In slave child process here */
+		slave_pid = getpid();
 		logprintf(slave_pid,"Slave process STARTED.\n");
 
 		/* Use setsid() so that when we open the pty slave it
 		   becomes the controlling tty */
-		setsid();
+		if (setsid() == -1)
+			logprintf(slave_pid,"ERROR: setsid(): %s\n",strerror(errno));
 
 		if (!openPTYSlave()) exit(1);
 		notifyWinSize();
@@ -54,24 +54,38 @@ void runSlave()
 		   checking code in checkLogin() only works under linux */
 		if (shell_exec_argv)
 		{
-			logprintf(slave_pid,"Executing shell process...\n");
+			logprintf(slave_pid,"Setting up enviroment for user \"%s\", uid %d...\n",
+				username,userinfo->pw_uid);
 
 			/* Add manually if exec'ing shell. /bin/login does it
 			   itself. Do it before we setuid as must be root. */
 			addUtmpEntry();
 
 			/* Switch to login user ids */
-			setuid(userinfo->pw_uid);
-			setgid(userinfo->pw_gid);
-			chdir(userinfo->pw_dir);
+			if (setuid(userinfo->pw_uid) == -1)
+			{
+				logprintf(slave_pid,"ERROR: setuid(%d): %s\n",
+					userinfo->pw_uid,strerror(errno));
+			}
+			if (setgid(userinfo->pw_gid) == -1)
+			{
+				logprintf(slave_pid,"ERROR: setgid(%d): %s\n",
+					userinfo->pw_gid,strerror(errno));
+			}
+			if (chdir(userinfo->pw_dir) == -1)
+			{
+				logprintf(slave_pid,"ERROR: chdir(\"%s\"): %s\n",
+					userinfo->pw_dir,strerror(errno));
+			}
 			setenv("HOME",userinfo->pw_dir,1);
 
 			prog = shell_exec_argv[0];
 			exec_argv = shell_exec_argv;
+
+			logprintf(slave_pid,"Executing shell process...\n");
 		}
 		else
 		{
-			logprintf(slave_pid,"Executing login process...\n");
 			if (!flags.append_user) telopt_username = NULL;
 
 			/* Login program and args given in .cfg? */
@@ -111,6 +125,7 @@ void runSlave()
 					exec_argv[2] = NULL;
 				}
 			}
+			logprintf(slave_pid,"Executing login process...\n");
 		}
 
 		/* Redirect I/O to pty slave */
@@ -165,7 +180,10 @@ void notifyWinSize()
 
 /*** If we didn't do this then the user login would be invisible to the 'who'
      command etc. The entry is removed automatically by init when the process 
-     exits. Linux only. ***/
+     exits. Linux only since MacOS never had the set/put API and its login 
+     used to manually update utmp. Now it uses some proprietary binary files 
+     /var/log/asl/BB* to store this info. To hell with messing around with 
+     those ***/
 void addUtmpEntry()
 {
 #ifndef __APPLE__
@@ -182,6 +200,7 @@ void addUtmpEntry()
 	/* Move to start of utmp file */
 	setutent();
 
-	pututline(&entry);
+	if (!pututline(&entry))
+		logprintf(slave_pid,"ERROR: addUtmpEntry(): pututline(): %s\n",strerror(errno));
 #endif
 }

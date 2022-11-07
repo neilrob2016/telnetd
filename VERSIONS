@@ -46,3 +46,12 @@ Sept 2021
   config options for Linux
 - Added parsing of ~ (tilda) in config paths. Eg motd_file
 - Minor bug fixes
+
+
+20221107
+========
+- Created tduser utility to add a user to the new telnetd password file.
+- Added pwd_file config option and associated functionality.
+- Added login_svrerr_msg config option
+- Added login_timeout_msg config option
+- Added README

@@ -117,9 +117,9 @@ void runMaster()
 			masterExit(1);
 			break;
 		case 0:
-			if (state == STATE_LOGIN)
+			if (state == STATE_LOGIN || state == STATE_PWD)
 			{
-				writeSockStr("\r\n\r\nTimeout.\r\n\r\n");
+				sockprintf("\r\n\r\n%s\r\n\r\n",login_timeout_msg);
 				masterExit(0);
 			}
 		}
@@ -184,53 +184,53 @@ void sendMOTD()
 			case 'b':
 				/* Can't get baud rate for a pty so just 
 				   return zero */
-				writeSockStr("0");
+				sockprintf("0");
 				break;
 			case 'd':
 				strftime(str,sizeof(str),"%F",tms);
-				writeSockStr(str);
+				sockprintf(str);
 				break;
 			case 'l':
-				writeSockStr(getPTYName());
+				sockprintf(getPTYName());
 				break;
 			case 'm':
-				writeSockStr(uts.machine);
+				sockprintf(uts.machine);
 				break;
 			case 'n':
-				writeSockStr(uts.nodename);
+				sockprintf(uts.nodename);
 				break;
 			case 'r':
-				writeSockStr(uts.release);
+				sockprintf(uts.release);
 				break;
 			case 's':
-				writeSockStr(uts.sysname);
+				sockprintf(uts.sysname);
 				break;
 			case 't':
 				strftime(str,sizeof(str),"%T",tms);
-				writeSockStr(str);
+				sockprintf(str);
 				break;
 			case 'u':
 				sprintf(str,"%d",getUserCount(1));
-				writeSockStr(str);
+				sockprintf(str);
 				break;
 			case 'U':
 				sprintf(str,"%d",getUserCount(0));
-				writeSockStr(str);
+				sockprintf(str);
 				break;
 			case 'v':
-				writeSockStr(uts.version);
+				sockprintf(uts.version);
 				break;
 			case 'x':
-				writeSockStr(SVR_NAME);
+				sockprintf(SVR_NAME);
 				break;
 			case 'y':
-				writeSockStr(SVR_VERSION);
+				sockprintf(SVR_VERSION);
 				break;
 			case 'z':
-				writeSockStr(SVR_BUILD_DATE);
+				sockprintf(BUILD_DATE);
 				break;
 			default:	
-				writeSockStr("??");
+				sockprintf("??");
 			}
 			esc = 0;
 		}
@@ -348,14 +348,13 @@ void processStateTelopt()
 	}
 
 	/* Exec shell program given on command line with -s. Linux only */
-	writeSockStr(login_prompt);
+	sockprintf(login_prompt);
 
 	/* If we got the username from the client enviroment info then jump to 
 	   password input */
 	if (telopt_username)
 	{
-		writeSockStr(telopt_username);
-		writeSockStr("\r\n");
+		sockprintf("%s\r\n",telopt_username);
 
 	    	if (loginAllowed(telopt_username))
 			setUserNameAndPwdState(telopt_username);
@@ -374,7 +373,7 @@ void setUserNameAndPwdState(char *uname)
 {
 	strncpy(username,uname,sizeof(username));
 	flags.echo = 0;
-	writeSockStr(pwd_prompt);
+	sockprintf(pwd_prompt);
 	setState(STATE_PWD);
 }
 
@@ -388,12 +387,8 @@ int loginAllowed(char *uname)
 	{
 		if (!strcmp(banned_users[i],uname)) 
 		{
-			if (checkLoginAttempts())
-			{
-				writeSockStr(banned_user_msg);
-				writeSockStr("\r\n");
-			}
-			writeSockStr(login_prompt);
+			checkLoginAttempts();
+			sockprintf("%s\r\n%s",banned_user_msg,login_prompt);
 			logprintf(master_pid,"WARNING: Attempted login of banned user \"%s\"\n",uname);
 			return 0;
 		}
@@ -404,18 +399,14 @@ int loginAllowed(char *uname)
 
 
 
-int checkLoginAttempts()
+void checkLoginAttempts()
 {
 	if (++attempts >= login_max_attempts)
 	{
-		writeSockStr("\r\n");
-		writeSockStr(login_max_attempts_msg);
-		writeSockStr("\r\n");
+		sockprintf("\r\n%s\r\n\r\n",login_max_attempts_msg);
 		logprintf(master_pid,"Maximum login attempts reached.\n");
 		masterExit(0);
-		return 0;
 	}
-	return 1;
 }
 
 

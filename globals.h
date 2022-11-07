@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20221018"
+#define SVR_VERSION "20221106"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -63,6 +63,8 @@
 
 #define LOGIN_INCORRECT_MSG    "Login incorrect."
 #define LOGIN_MAX_ATTEMPTS_MSG "Maximum login attempts reached."
+#define LOGIN_SVRERR_MSG       "Server error. Please contact your system administrator."
+#define LOGIN_TIMEOUT_MSG      "Timeout."
 #define BANNED_USER_MSG        "Login banned."
 
 /* More useful macro names. Defined in arpa/telnet.h */
@@ -134,12 +136,15 @@ EXTERN char *login_prompt;
 EXTERN char *pwd_prompt;
 EXTERN char *motd_file;
 EXTERN char *log_file;
+EXTERN char *pwd_file;
 EXTERN char **banned_users;
 EXTERN char *banned_user_msg;
 EXTERN char **shell_exec_argv;
 EXTERN char **login_exec_argv;
 EXTERN char *login_incorrect_msg;
 EXTERN char *login_max_attempts_msg;
+EXTERN char *login_svrerr_msg;
+EXTERN char *login_timeout_msg;
 EXTERN int shell_exec_argv_cnt;
 EXTERN int login_exec_argv_cnt;
 EXTERN int login_max_attempts;
@@ -186,7 +191,7 @@ void parseConfigFile();
 void runMaster();
 void setUserNameAndPwdState(char *uname);
 int  loginAllowed(char *uname);
-int  checkLoginAttempts();
+void checkLoginAttempts();
 void storeWinSize();
 void masterExit(int code);
 
@@ -199,11 +204,15 @@ int  openPTYMaster();
 int  openPTYSlave();
 char *getPTYName();
 
-/* io.c */
-void readPtyMaster();
+/* network.c */
+void createListenSocket();
 void readSock();
 void writeSock(char *data, int len);
-void writeSockStr(char *data);
+
+/* validate.c */
+int validatePwd(char *password);
+
+/* printf.c */
 void sockprintf(char *fmt, ...);
 void logprintf(pid_t pid, char *fmt, ...);
 

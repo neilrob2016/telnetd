@@ -10,12 +10,14 @@
 #define MAINFILE
 #include "globals.h"
 
+#define NUM_ENC_METHODS 4
+
 void init();
 void parseCmdLine(int argc, char **argv);
 void version();
-void createListenSocket();
 void beDaemon();
 void setUpSignals();
+void doChecks();
 void mainloop();
 void hupHandler(int sig);
 void parentSigHandler(int sig);
@@ -29,6 +31,7 @@ int main(int argc, char **argv)
 	parseCmdLine(argc,argv);
 	version();
 	parseConfigFile();
+	doChecks();
 	createListenSocket();
 	if (flags.daemon) beDaemon();
 	setUpSignals();
@@ -46,6 +49,8 @@ void init()
 	pwd_prompt = NULL;
 	login_incorrect_msg = NULL;
 	login_max_attempts_msg = NULL;
+	login_svrerr_msg = NULL;
+	login_timeout_msg = NULL;
 	banned_user_msg = NULL;
 	login_max_attempts = LOGIN_MAX_ATTEMPTS;
 	login_pause_secs = LOGIN_PAUSE_SECS;
@@ -60,10 +65,13 @@ void init()
 	log_file_fail_cnt = 0;
 	motd_file = NULL;
 	log_file = NULL;
+	pwd_file = NULL;
 	iface = NULL;
 	iface_in_addr.sin_addr.s_addr = INADDR_ANY;
 	state = STATE_NOTSET;
 	parent_pid = getpid();
+	username[0] = 0;
+
 	bzero(&flags,sizeof(flags));
 }
 
@@ -142,63 +150,51 @@ void version()
 #else
 	logprintf(0,"Linux/generic\n");
 #endif
-	logprintf(0,"Build date: %s\n",SVR_BUILD_DATE);
+	logprintf(0,"Build date: %s\n",BUILD_DATE);
 	logprintf(0,"Parent PID: %u\n\n",getpid());
 }
 
 
 
 
-/*** Create the socket to initially connect to ***/
-void createListenSocket()
+/**** User id and crypt() check ***/
+void doChecks()
 {
-	struct sockaddr_in bind_addr;
-	int on;
-
-	if ((listen_sock = socket(AF_INET,SOCK_STREAM,0)) == -1)
+#ifndef __APPLE__
+	char *enc_code[NUM_ENC_METHODS] =
 	{
-		logprintf(0,"ERROR: createListenSocket(): socket(): %s\n",
-			strerror(errno));
-		exit(1);
-	}
-
-	on = 1;
-	if (setsockopt(
-		listen_sock,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) == -1)
+		"1","2a","5","6"
+	};
+	char *enc_name[NUM_ENC_METHODS] =
 	{
-		logprintf(0,"ERROR: createListenSocket(): setsockopt(SO_REUSEADDR): %s\n",
-			strerror(errno));
-		exit(1);
-	}
+		"MD5",
+		"Blowfish",
+		"SHA256",
+		"SHA512"
+	};
+	char salt[7];
+	int i;
+#endif
+	if (getpid())
+		logprintf(0,"WARNING: Not running as root. Some functionality may not be available.\n");
 
-	if (iface)
+	/*** See which cryptographic functions are supported by crypt(). Just 
+	     prints warnings to the log ***/
+	if (pwd_file)
 	{
-		logprintf(0,">>> Using interface \"%s\", address %s\n",
-			iface,inet_ntoa(iface_in_addr.sin_addr));
+#ifdef __APPLE__
+		logprintf(0,"WARNING: MacOS crypt() only supports DES encryption.\n");
+#else
+		/* See what glibc supports */
+		logprintf(0,">>> Non DES encryption types supported by crypt():\n");
+		for(i=0;i < NUM_ENC_METHODS;++i)
+		{
+			sprintf(salt,"$%s$ab",enc_code[i]);
+			logprintf(0,"    %-8s: %s\n",
+				enc_name[i],crypt("x",salt) ? "YES" : "NO");
+		}
+#endif
 	}
-	else logprintf(0,">>> Using interface INADDR_ANY\n");
-
-	bzero(&bind_addr,sizeof(bind_addr));
-	bind_addr.sin_family = AF_INET;
-	bind_addr.sin_port = htons(port);
-	bind_addr.sin_addr.s_addr = iface_in_addr.sin_addr.s_addr;
-
-	if (bind(
-		listen_sock,
-		(struct sockaddr *)&bind_addr,sizeof(bind_addr)) == -1)
-	{
-		logprintf(0,"ERROR: createListenSocket(): bind(): %s\n",
-			strerror(errno));
-		exit(1);
-	}
-
-	if (listen(listen_sock,20) == -1)
-	{
-		logprintf(0,"ERROR: createListenSocket(): listen(): %s\n",
-			strerror(errno));
-		exit(1);
-	}
-	logprintf(0,">>> Listening on port %d\n",port);
 }
 
 
@@ -267,6 +263,7 @@ void setUpSignals()
 
 
 
+
 /********************************* RUNTIME **********************************/
 
 /*** Does what it says on the tin ***/
@@ -278,7 +275,7 @@ void mainloop()
 	socklen_t size;
 	char *dns;
 
-	logprintf(parent_pid,"*** Started ***\n");
+	logprintf(parent_pid,"Parent process STARTED.\n");
 
 	size = sizeof(ip_addr);
 	lin.l_onoff = 1;

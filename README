@@ -1,0 +1,101 @@
+*********************************** TELNETD ***********************************
+
+This is an alternative telnet daemon for Linux and MacOS for systems that not 
+longer have one. It may compile and run on other versions of *nix but I make
+no promises. Older versions compiled on ARM Linux but I am no longer able to
+test on an ARM system so it may still compile, it may not.
+
+Please read the comments in the example telnetd.cfg file for explanations
+of all the fields however one thing to note is that this server can either
+use the *nix login system or it can use its own seperate password file. 
+However be aware that all users in this password file must exist on the system 
+or they will not be able to login in.
+
+To compile the code simply type "make". There are no 3rd party dependencies
+required though MacOS must have clang installed. The server binary is "telnetd" 
+and the local password file utility is called "tduser" (see below). To run the 
+server you can simply type "telnetd" and it will use the telnet.cfg config file
+for all its setup but it does take some command line options:
+
+Usage: telnetd
+       -c            : Configuration file. Default = telnetd.cfg
+       -l <log file> : Overrides log file in config file.
+       -r <log file> : Same as -l except it removes the log file first if it
+                       already exists.
+       -f <count>    : Maximum number of log file write fails before reverting
+                       back to logging to stdout.
+       -v            : Print version then exit.
+All arguments are optional.
+
+If you don't want any user login but just want to drop anyone who connects
+directly into a program then set the login_program field to whatever program
+you wish to be exec'd. It doesn't have to be /bin/login.
+
+
+Setup
+-----
+As shipped telnetd is set up to run shell_program /bin/bash which requires
+you to create a telnetd.pwd file using tduser. eg:
+
+tduser -u mylogin -p mypasswd
+
+Then you can log on on the default port 4000. Modify telnetd.cfg to set the
+port to 23 but you'll have to run telnetd as root for that to work.
+
+
+MacOS notes
+-----------
+1)
+The pwd_file field to be set if shell_program is set. This is because the MacOS
+user info and login system is obtuse and doesn't use the standard *nix API 
+which includes getpwnam() so telnetd can't obtain the user password from MacOS.
+This doesn't apply if /bin/login is used as that does it itself.
+2)
+The user will not be added to the "who" listing as MacOS does not use the 
+standard *nix method but some obscure method that writes to /var/log/asl/BB* 
+binary files with no documentation on any C API that I can find.
+3)
+The crypt() function only supports DES encryption unlike Linux which also 
+supports MD5 and SHA256/512.
+
+Generic notes
+-------------
+1)
+If telnetd is not run as root some functionality might not work in particular
+it will not be able to listen on port 23 (set to port 4000 in config file). 
+Also setuid and setgid might not work and on Linux the user cannot be added to 
+the "who" listing.
+
+2)
+Currently the shell_program applies to all users which means when using the
+telnetd login system all users exec the same program unlike in /etc/passwd
+where different users can have different shells to run. This will change
+in the future.
+
+
+*********************************** TDUSER ***********************************
+
+This will add a user and their encrypted password to a file that telnetd
+can use as its password file as an alternative to the system file. If the 
+file doesn't exist yet it will be created. Note that on MacOS the -e and -l 
+options are not available because its crypt() function only supports DES 
+encryption.
+
+Usage: ./tduser
+       -u <username>
+       -p <password>
+       -f <password file>   : Default = "telnetd.pwd"
+       -e <encryption type> : Options are DES,MD5,SHA256,SHA512 and BFISH.
+                              Default = DES
+       -l                   : List supported encryption types then exit.
+       -v                   : Print version and build date then exit.
+
+Note: All arguments are optional. If username and/or password are not provided
+      you will be prompted for them. This means they will not get stored in the
+      shell history as they would using the command line arguments.
+
+
+
+
+Any bugs or issues email: neilrob2016@gmail.com
+

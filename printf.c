@@ -9,20 +9,25 @@ void sockprintf(char *fmt, ...)
 	u_char out2[BUFFSIZE*2];
 	u_char *s1;
 	u_char *s2;
+	int len;
 
 	va_start(args,fmt);
 	vsnprintf((char *)out1,BUFFSIZE,fmt,args);
 	va_end(args);
 
 	/* Convert \n to \r\n */
-	for(s1=out1,s2=out2;*s1;++s1,++s2)
+	for(s1=out1,s2=out2,len=0;*s1;++s1,++s2,++len)
 	{
-		if (*s1 == '\n') *s2++ = '\r';
+		if (*s1 == '\n')
+		{
+			*s2++ = '\r';
+			++len;
+		}
 		*s2 = *s1;
 	}
 	*s2 = 0;
 
- 	writeSockStr((char *)out2);
+	if (len) writeSock((char *)out2,len);
 }
 
 

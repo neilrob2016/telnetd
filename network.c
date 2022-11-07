@@ -3,7 +3,61 @@
 void hexdump(u_char *start, u_char *end, int rx);
 void processChar(u_char c);
 void processLine();
-int  validateLogin(char *password);
+
+
+/*** Create the socket to initially connect to ***/
+void createListenSocket()
+{
+	struct sockaddr_in bind_addr;
+	int on;
+
+	if ((listen_sock = socket(AF_INET,SOCK_STREAM,0)) == -1)
+	{
+		logprintf(0,"ERROR: createListenSocket(): socket(): %s\n",
+			strerror(errno));
+		exit(1);
+	}
+
+	on = 1;
+	if (setsockopt(
+		listen_sock,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) == -1)
+	{
+		logprintf(0,"ERROR: createListenSocket(): setsockopt(SO_REUSEADDR): %s\n",
+			strerror(errno));
+		exit(1);
+	}
+
+	if (iface)
+	{
+		logprintf(0,">>> Using interface \"%s\", address %s\n",
+			iface,inet_ntoa(iface_in_addr.sin_addr));
+	}
+	else logprintf(0,">>> Using interface INADDR_ANY\n");
+
+	bzero(&bind_addr,sizeof(bind_addr));
+	bind_addr.sin_family = AF_INET;
+	bind_addr.sin_port = htons(port);
+	bind_addr.sin_addr.s_addr = iface_in_addr.sin_addr.s_addr;
+
+	if (bind(
+		listen_sock,
+		(struct sockaddr *)&bind_addr,sizeof(bind_addr)) == -1)
+	{
+		logprintf(0,"ERROR: createListenSocket(): bind(): %s\n",
+			strerror(errno));
+		exit(1);
+	}
+
+	if (listen(listen_sock,20) == -1)
+	{
+		logprintf(0,"ERROR: createListenSocket(): listen(): %s\n",
+			strerror(errno));
+		exit(1);
+	}
+	logprintf(0,">>> Listening on port %d\n",port);
+}
+
+
 
 
 /*** Read from the socket and call processChar() function ***/
@@ -160,11 +214,11 @@ void processChar(u_char c)
 		{
 		case '\r':
 		case '\n':
-			writeSockStr("\r\n");
+			sockprintf("\r\n");
 			break;
 
 		case DELETE_KEY:
-			writeSockStr("\b \b");
+			sockprintf("\b \b");
 			break;
 
 		default:
@@ -202,7 +256,7 @@ void processLine()
 	case STATE_LOGIN:
 		if (!line[0])
 		{
-			writeSockStr(login_prompt);
+			sockprintf(login_prompt);
 			return;
 		}
 		if (loginAllowed((char *)line))
@@ -210,86 +264,43 @@ void processLine()
 		break;
 
 	case STATE_PWD:
+		/* Unlike username we don't check for a zero length pwd because
+		   the username may have been auto filled in but the user wants
+		   to use a different one and pressing return on the password 
+		   is the easiest way to get back to the login prompt */
+		sockprintf("\r\n");
 		flags.echo = 1;
-		writeSockStr("\r\n");
-		if (!validateLogin((char *)line))
+		switch(validatePwd((char *)line))
 		{
-			if (checkLoginAttempts())
-			{
-				writeSockStr(login_incorrect_msg);
-				writeSockStr("\r\n");
-			}
+		case -1:
+			sockprintf("\r\n%s\r\n\r\n",login_svrerr_msg);
+			logprintf(master_pid,"ERROR: processLine(): validatePwd() returned -1 for user \"%s\".\n",username);
+			masterExit(0);
+			/* Won't get here */
+			break;
+		case 0:
+			checkLoginAttempts();
+			sockprintf("%s\r\n",login_incorrect_msg);
 
 			if (login_pause_secs) sleep(login_pause_secs);
-			writeSockStr(login_prompt);
+			sockprintf(login_prompt);
 			setState(STATE_LOGIN);
 			break;
+		case 1:
+			logprintf(master_pid,"User validated as \"%s\".\n",
+				username);
+			setState(STATE_SHELL);
+			runSlave();
+			break;
+		default:
+			assert(0);
 		}
-		logprintf(master_pid,"User logged in as \"%s\".\n",username);
-		setState(STATE_SHELL);
-		runSlave();
 		break;
-
 	default:
 		/* Shouldn't be in any other states in this function */
 		assert(0);
 	}
 	line[0] = 0;
-}
-
-
-
-
-/*** None of this works on MacOS which is why the shell options are ifndef'd 
-     out in parseCmdLine(). The reason for this is MacOS uses PAM to 
-     authenticate and the PAM API is PITA to use ***/
-int validateLogin(char *password)
-{
-#ifdef __APPLE__
-	return 0;
-#else
-	struct spwd *spwd;
-	char *pwd;
-	char *salt;
-	char *hash;
-	char *cry;
-	int len;
-
-	/* Check user exists */
-	if (!(userinfo = getpwnam(username))) return 0;
-
-	/* If no password then get info from shadow password file */
-	if (!strcmp(userinfo->pw_passwd,"x"))
-	{
-		if (!(spwd = getspnam(userinfo->pw_name)))
-		{
-			sockprintf("ERROR: validateLogin(): getspnam(): %s\n",strerror(errno));
-			return 0;
-		}
-		pwd = spwd->sp_pwdp;
-	}
-	else pwd = userinfo->pw_passwd;
-
-	/* If we have a '.' in the hash thats the delimiter between the salt
-	   and the password hash, else look for the last '$' else just use the 
-	   1st 2 characters for the salt */
-	if ((hash = strchr(pwd,'.')) ||
-	    (hash = strrchr(pwd,'$')))
-	{
-		len = (int)(hash - pwd);
-		asprintf(&salt,"%.*s",len,pwd);
-		++hash;
-	}
-	else
-	{
-		asprintf(&salt,"%.2s",pwd);
-		hash = pwd + 2;
-	}
-	if (!(cry = crypt(password,salt)))
-		logprintf(master_pid,"ERROR: validateLogin(): crypt() returned NULL");
-	free(salt);
-	return (cry ? !strcmp(cry,pwd) : 0);
-#endif
 }
 
 
@@ -327,12 +338,4 @@ void writeSock(char *data, int len)
 		bytes += l;
 	}
 	if (flags.hexdump) hexdump((u_char *)data,(u_char *)data+len,0);
-}
-
-
-
-
-void writeSockStr(char *str)
-{
-	writeSock(str,strlen(str));
 }

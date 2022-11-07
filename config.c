@@ -1,6 +1,6 @@
 #include "globals.h"
 
-#define SET_STR_PARAM(P) \
+#define SET_STR_FIELD(P) \
 	if (P) \
 	{ \
 		if (flags.sighup) \
@@ -13,9 +13,7 @@
 
 void processConfigParam(char *param, char *value, int linenum);
 void parsePath(char **path);
-#ifndef __APPLE__
 void parseBannedUsers(char *list);
-#endif
 void parseInterface(char *addr);
 void printParams();
 void freeArray(char **words, int word_cnt);
@@ -53,6 +51,7 @@ void parseConfigFile()
 			strerror(errno));
 		parentExit(-1);
 	}
+	/* st_size + 1 so we can put \0 on end */
 	if ((map_start = (char *)mmap(NULL,
 		fs.st_size+1,
 		PROT_READ | PROT_WRITE,MAP_PRIVATE,fd,0)) == MAP_FAILED)
@@ -116,7 +115,7 @@ void parseConfigFile()
 				processConfigParam(words[0],words[1],linenum);
 				break;
 			default:
-				logprintf(0,"ERROR: Too %s arguments for parameter \"%s\" on line %d.\n",
+				logprintf(0,"ERROR: Too %s arguments for field \"%s\" on line %d.\n",
 					word_cnt > 2 ? "many" : "few",
 					words[0],linenum);
 				parentExit(-1);
@@ -127,16 +126,47 @@ void parseConfigFile()
 	}
 	munmap(map_start,fs.st_size+1);
 
-	/* Need strdup otherwise there'll be a crash if we free them
-	   after a SIGHUP */
+	/* Do some sanity checks on the main fields */
+	if (shell_exec_argv && login_exec_argv)
+	{
+		logprintf(0,"ERROR: The shell_program and login_program fields are mutually exclusive.\n");
+		parentExit(-1);
+	}
+	if (pwd_file)
+	{
+		if (login_exec_argv)
+		{
+			logprintf(0,"ERROR: The login_program and pwd_file fields are mutually exclusive.\n");
+			parentExit(1);
+		}
+ 		if (!shell_exec_argv)
+		{
+			logprintf(0,"ERROR: The shell_program option must be set if pwd_file is given.\n");
+			parentExit(1);
+		}
+	}
+#ifdef __APPLE__
+	/* Because we can't get user password info from MacOS as it doesn't 
+	   have the getpwnam() system function, it uses PAM instead which is
+	   a PITA */
+	if (shell_exec_argv && !pwd_file)
+	{
+		logprintf(0,"ERROR: On MacOS the shell_program option requires the pwd_file option to be set.\n");
+		parentExit(1);
+	}
+#endif
+	/* Need strdup because they're strdup()'d if they come from the config
+	   file and these will be free'd after SIGHUP so can't just point them
+	   direct to the macros */
 	if (!login_prompt) login_prompt = strdup(LOGIN_PROMPT);
 	if (!pwd_prompt) pwd_prompt = strdup(PWD_PROMPT);
 	if (!login_incorrect_msg)
 		login_incorrect_msg = strdup(LOGIN_INCORRECT_MSG);
 	if (!login_max_attempts_msg)
 		login_max_attempts_msg = strdup(LOGIN_MAX_ATTEMPTS_MSG);
-	if (!banned_user_msg)
-		banned_user_msg = strdup(BANNED_USER_MSG);
+	if (!login_svrerr_msg) login_svrerr_msg = strdup(LOGIN_SVRERR_MSG);
+	if (!login_timeout_msg) login_svrerr_msg = strdup(LOGIN_TIMEOUT_MSG);
+	if (!banned_user_msg) banned_user_msg = strdup(BANNED_USER_MSG);
 
 	printParams();
 }
@@ -169,46 +199,52 @@ void processConfigParam(char *param, char *value, int linenum)
 		"login_incorrect_msg",
 		"login_max_attempts_msg",
 
+		"login_svrerr_msg",
+		"login_timeout_msg",
 		"pwd_prompt",
 		"shell_program",
 		"banned_users",
+
 		"banned_user_msg",
 		"motd_file",
-
 		"log_file",
-		"log_file_rm"
+		"log_file_rm",
+		"pwd_file",
 	};
 	enum
 	{
 		/* Flags */
-		PARAM_BE_DAEMON,
-		PARAM_HEXDUMP,
-		PARAM_LOGIN_APPEND_USER,
-		PARAM_LOGIN_PRESERVE_ENV,
+		FIELD_BE_DAEMON,
+		FIELD_HEXDUMP,
+		FIELD_LOGIN_APPEND_USER,
+		FIELD_LOGIN_PRESERVE_ENV,
 
 		/* Numeric */
-		PARAM_PORT,
-		PARAM_TELOPT_TIMEOUT_SECS,
-		PARAM_LOG_FILE_MAX_FAILS,
-		PARAM_LOGIN_MAX_ATTEMPTS,
-		PARAM_LOGIN_TIMEOUT_SECS,
-		PARAM_LOGIN_PAUSE_SECS,
+		FIELD_PORT,
+		FIELD_TELOPT_TIMEOUT_SECS,
+		FIELD_LOG_FILE_MAX_FAILS,
+		FIELD_LOGIN_MAX_ATTEMPTS,
+		FIELD_LOGIN_TIMEOUT_SECS,
+		FIELD_LOGIN_PAUSE_SECS,
 
 		/* Strings */
-		PARAM_NETWORK_INTERFACE,
-		PARAM_LOGIN_PROGRAM,
-		PARAM_LOGIN_PROMPT,
-		PARAM_LOGIN_INCORRECT_MSG,
-		PARAM_LOGIN_MAX_ATTEMPTS_MSG,
+		FIELD_NETWORK_INTERFACE,
+		FIELD_LOGIN_PROGRAM,
+		FIELD_LOGIN_PROMPT,
+		FIELD_LOGIN_INCORRECT_MSG,
+		FIELD_LOGIN_MAX_ATTEMPTS_MSG,
 
-		PARAM_PWD_PROMPT,
-		PARAM_SHELL_PROGRAM,
-		PARAM_BANNED_USERS,
-		PARAM_BANNED_USER_MSG,
-		PARAM_MOTD_FILE,
+		FIELD_LOGIN_SVRERR_MSG,
+		FIELD_LOGIN_TIMEOUT_MSG,
+		FIELD_PWD_PROMPT,
+		FIELD_SHELL_PROGRAM,
+		FIELD_BANNED_USERS,
 
-		PARAM_LOG_FILE,
-		PARAM_LOG_FILE_RM,
+		FIELD_BANNED_USER_MSG,
+		FIELD_MOTD_FILE,
+		FIELD_LOG_FILE,
+		FIELD_LOG_FILE_RM,
+		FIELD_PWD_FILE,
 
 		NUM_PARAMS
 	};
@@ -244,29 +280,29 @@ void processConfigParam(char *param, char *value, int linenum)
 		switch(i)
 		{
 		/* Flags */
-		case PARAM_BE_DAEMON:
+		case FIELD_BE_DAEMON:
 			if (flags.sighup) goto IGNORE_WARNING; /* Too late */
 			if (yes == -1) goto VAL_ERROR;
 			flags.daemon = yes;
 			break;
 
-		case PARAM_HEXDUMP:
+		case FIELD_HEXDUMP:
 			if (yes == -1) goto VAL_ERROR;
 			flags.hexdump = yes;
 			break;
 
-		case PARAM_LOGIN_APPEND_USER:
+		case FIELD_LOGIN_APPEND_USER:
 			if (yes == -1) goto VAL_ERROR;
 			flags.append_user = yes;
 			break;
 
-		case PARAM_LOGIN_PRESERVE_ENV:
+		case FIELD_LOGIN_PRESERVE_ENV:
 			if (yes == -1) goto VAL_ERROR;
 			flags.preserve_env = yes;
 			break;
 
 		/* Numeric values */
-		case PARAM_PORT:
+		case FIELD_PORT:
 			/* Ignore if SIGHUP as it would mean closing the
 			   current socket and re-creating. Too much hassle. */
 			if (flags.sighup) goto IGNORE_WARNING;
@@ -275,45 +311,47 @@ void processConfigParam(char *param, char *value, int linenum)
 			port = ivalue;
 			break;
 
-		case PARAM_TELOPT_TIMEOUT_SECS:
+		case FIELD_TELOPT_TIMEOUT_SECS:
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			telopt_timeout_secs = ivalue;
 			break;
 
-		case PARAM_LOG_FILE_MAX_FAILS:
+		case FIELD_LOG_FILE_MAX_FAILS:
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			if (flags.log_fails_override) goto OVERRIDE;
 			log_file_max_fails = ivalue;
 			break;
-#ifdef __APPLE__
-		case PARAM_LOGIN_MAX_ATTEMPTS:
-		case PARAM_LOGIN_TIMEOUT_SECS:
-		case PARAM_LOGIN_PAUSE_SECS:
-			goto UNSUPPORTED;
-#else
-		case PARAM_LOGIN_MAX_ATTEMPTS:
+
+		case FIELD_LOGIN_MAX_ATTEMPTS:
 			if (!is_num || ivalue < 1) goto VAL_ERROR;
 			login_max_attempts = ivalue;
 			break;
 
-		case PARAM_LOGIN_TIMEOUT_SECS:
+		case FIELD_LOGIN_SVRERR_MSG:
+			SET_STR_FIELD(login_svrerr_msg);
+			break;
+
+		case FIELD_LOGIN_TIMEOUT_MSG:
+			SET_STR_FIELD(login_timeout_msg);
+			break;
+
+		case FIELD_LOGIN_TIMEOUT_SECS:
 			if (!is_num || ivalue < 1) goto VAL_ERROR;
 			login_timeout_secs = ivalue;
 			break;
 
-		case PARAM_LOGIN_PAUSE_SECS:
+		case FIELD_LOGIN_PAUSE_SECS:
 			if (!is_num || ivalue < 0) goto VAL_ERROR;
 			login_pause_secs = ivalue;
 			break;
-#endif
+
 		/* String values */
-		case PARAM_NETWORK_INTERFACE:
+		case FIELD_NETWORK_INTERFACE:
 			if (flags.sighup) goto IGNORE_WARNING;
 			parseInterface(value);
 			break;
 
-		case PARAM_LOGIN_PROGRAM:
-			if (shell_exec_argv) goto EXCL_ERROR;
+		case FIELD_LOGIN_PROGRAM:
 			if (login_exec_argv) goto ALREADY_SET_ERROR;
 			splitString(
 				value,
@@ -325,39 +363,24 @@ void processConfigParam(char *param, char *value, int linenum)
 			}
 			parsePath(&login_exec_argv[0]);
 			break;
-#ifdef __APPLE__
-		case PARAM_LOGIN_PROMPT:
-		case PARAM_LOGIN_INCORRECT_MSG:
-		case PARAM_LOGIN_MAX_ATTEMPTS_MSG:
-		case PARAM_PWD_PROMPT:
-		case PARAM_BANNED_USERS:
-		case PARAM_BANNED_USER_MSG:
-			goto UNSUPPORTED;
-		case PARAM_SHELL_PROGRAM:
-			/* Fail here because user is expecting a particular
-			   program to be spawned, not just /bin/login */
-			logprintf(0,"ERROR: Not supported in a MacOS build.\n");
-			parentExit(-1);
-			break;
-#else
-		case PARAM_LOGIN_PROMPT:
-			SET_STR_PARAM(login_prompt);
+
+		case FIELD_LOGIN_PROMPT:
+			SET_STR_FIELD(login_prompt);
 			break;
 
-		case PARAM_LOGIN_INCORRECT_MSG:
-			SET_STR_PARAM(login_incorrect_msg);
+		case FIELD_LOGIN_INCORRECT_MSG:
+			SET_STR_FIELD(login_incorrect_msg);
 			break;
 
-		case PARAM_LOGIN_MAX_ATTEMPTS_MSG:
-			SET_STR_PARAM(login_max_attempts_msg);
+		case FIELD_LOGIN_MAX_ATTEMPTS_MSG:
+			SET_STR_FIELD(login_max_attempts_msg);
 			break;
 
-		case PARAM_PWD_PROMPT:
-			SET_STR_PARAM(pwd_prompt);
+		case FIELD_PWD_PROMPT:
+			SET_STR_FIELD(pwd_prompt);
 			break;
 
-		case PARAM_SHELL_PROGRAM:
-			if (login_exec_argv) goto EXCL_ERROR;
+		case FIELD_SHELL_PROGRAM:
 			if (shell_exec_argv) goto ALREADY_SET_ERROR;
 			splitString(
 				value,NULL,
@@ -370,23 +393,23 @@ void processConfigParam(char *param, char *value, int linenum)
 			parsePath(&shell_exec_argv[0]);
 			break;
 
-		case PARAM_BANNED_USERS:
-			if (banned_users) goto ALREADY_SET_ERROR;
+		case FIELD_BANNED_USERS:
+			if (banned_users && !flags.sighup)
+				goto ALREADY_SET_ERROR;
 			parseBannedUsers(value);
 			break;
 
-		case PARAM_BANNED_USER_MSG:
-			if (banned_user_msg) goto ALREADY_SET_ERROR;
-			banned_user_msg = strdup(value);
+		case FIELD_BANNED_USER_MSG:
+			SET_STR_FIELD(banned_user_msg);
 			break;
-#endif
-		case PARAM_MOTD_FILE:
-			SET_STR_PARAM(motd_file);
+
+		case FIELD_MOTD_FILE:
+			SET_STR_FIELD(motd_file);
 			parsePath(&motd_file);
 			break;
 
-		case PARAM_LOG_FILE:
-		case PARAM_LOG_FILE_RM:
+		case FIELD_LOG_FILE:
+		case FIELD_LOG_FILE_RM:
 			if (flags.sighup) goto IGNORE_WARNING;
 			if (flags.log_file_override) goto OVERRIDE;
 
@@ -398,8 +421,13 @@ void processConfigParam(char *param, char *value, int linenum)
 			parsePath(&tmp);
 			logprintf(0,">>> Redirecting output to \"%s\"...\n",tmp);
 			log_file = tmp;
-			if (i == PARAM_LOG_FILE_RM) unlink(log_file);
+			if (i == FIELD_LOG_FILE_RM) unlink(log_file);
 			return;
+
+		case FIELD_PWD_FILE:
+			SET_STR_FIELD(pwd_file);
+			parsePath(&pwd_file);
+			break;
 
 		default:
 			assert(0);
@@ -418,26 +446,16 @@ void processConfigParam(char *param, char *value, int linenum)
 	parentExit(-1);
 
 	ALREADY_SET_ERROR:
-	logprintf(0,"ERROR: Parameter already set.\n");
-	parentExit(-1);
-
-	EXCL_ERROR:
-	logprintf(0,"ERROR: The shell_program and login_program config file parameters are mutually exclusive.\n");
+	logprintf(0,"ERROR: Field already set.\n");
 	parentExit(-1);
 
 	IGNORE_WARNING:
-	logprintf(0,"WARNING: Parameter \"%s\" ignored - valid at startup only.\n",param);
+	logprintf(0,"WARNING: Field \"%s\" ignored - valid at startup only.\n",param);
 	return;
 	
 	OVERRIDE:
-	logprintf(0,"WARNING: Parameter \"%s\" overridden by command line argument.\n",param);
+	logprintf(0,"WARNING: Field \"%s\" overridden by command line argument.\n",param);
 	return;
-
-#ifdef __APPLE__
-	UNSUPPORTED:
-	logprintf(0,"WARNING: Not supported in a MacOS build.\n");
-	return;
-#endif
 }
 
 
@@ -510,11 +528,16 @@ void parsePath(char **path)
 
 
 
-#ifndef __APPLE__
 void parseBannedUsers(char *list)
 {
 	char *user;
+	int i;
 
+	if (flags.sighup && banned_users)
+	{
+		for(i=0;i < banned_users_cnt;++i) free(banned_users[i]);
+		free(banned_users);
+	}
 	for(user=strtok(list,",");user;user=strtok(NULL,","))
 	{
 		banned_users = (char **)realloc(
@@ -527,7 +550,7 @@ void parseBannedUsers(char *list)
 		++banned_users_cnt;
 	} 
 }
-#endif
+
 
 
 
@@ -568,9 +591,7 @@ void parseInterface(char *addr)
 
 void printParams()
 {
-#ifndef __APPLE__
 	char **ptr;
-#endif
 	int i;
 
 	/* Don't need parent id as we're doing short log lines */
@@ -578,6 +599,7 @@ void printParams()
 	logprintf(0,"    =========               =====\n");
 	logprintf(0,"    Config file           : %s\n",PRTSTR(config_file));
 	logprintf(0,"    MOTD file             : %s\n",PRTSTR(motd_file));
+	logprintf(0,"    Password file         : %s\n",PRTSTR(pwd_file));
 	logprintf(0,"    Log file              : %s\n",PRTSTR(log_file));
 	logprintf(0,"    Log file max wrt fails: %d\n",log_file_max_fails);
 	logprintf(0,"    Network interface     : %s\n",PRTSTR(iface));
@@ -608,7 +630,6 @@ void printParams()
 			flags.preserve_env ? ",-p" : "",
 			flags.append_user ? ",[TELNET USER]" : "");
 	}
-#ifndef __APPLE__
 	logprintf(0,"    Shell process args    : ");
 	if (shell_exec_argv)
 	{
@@ -647,7 +668,6 @@ void printParams()
 	}
 	else logprintf(0,"<none>\n");
 	logprintf(0,"    Banned user message   : \"%s\"\n",banned_user_msg);
-#endif
 	logprintf(0,"\n");
 }
 

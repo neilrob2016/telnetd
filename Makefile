@@ -5,7 +5,7 @@ endif
 
 CC=cc 
 
-# ARM Linux
+# If you're feeling brave you can try and compile it on ARM Linux
 #CC=aarch64-poky-linux-gcc --sysroot=/opt/fsl-imx-wayland/4.19-warrior/sysroots/aarch64-poky-linux
 
 ARGS=-g -Wall -pedantic
@@ -15,14 +15,16 @@ OBJS= \
 	master.o \
 	slave.o \
 	telopt.o \
-	io.o \
+	network.o \
+	validate.o \
 	printf.o \
 	pty.o \
 	split.o \
 	misc.o
 BIN=telnetd
+BIN2=tduser
 
-$(BIN): build_date $(OBJS) Makefile
+$(BIN): build_date $(OBJS) Makefile $(BIN2)
 	$(CC) $(OBJS) $(CLIB) -o $(BIN)
 
 main.o: main.c globals.h build_date.h
@@ -43,8 +45,11 @@ telopt.o: telopt.c globals.h
 printf.o: printf.c globals.h
 	$(CC) $(ARGS) -c printf.c
 
-io.o: io.c globals.h
-	$(CC) $(ARGS) -c io.c
+network.o: network.c globals.h
+	$(CC) $(ARGS) -c network.c
+
+validate.o: validate.c globals.h
+	$(CC) $(ARGS) -c validate.c
 
 pty.o: pty.c globals.h
 	$(CC) $(ARGS) -c pty.c
@@ -55,8 +60,11 @@ split.o: split.c globals.h
 misc.o: misc.c globals.h
 	$(CC) $(ARGS) -c misc.c
 
+$(BIN2): tduser.c build_date
+	$(CC) $(ARGS) tduser.c $(CLIB) -o $(BIN2)
+
 build_date:
-	echo "#define SVR_BUILD_DATE \"`date -u +'%F %T %Z'`\"" > build_date.h
+	echo "#define BUILD_DATE \"`date -u +'%F %T %Z'`\"" > build_date.h
 
 clean:
-	rm -f $(BIN) $(OBJS) build_date.h 
+	rm -r -f $(BIN) $(OBJS) $(BIN2) *dSYM build_date.h 
