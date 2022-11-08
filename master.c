@@ -100,7 +100,7 @@ void runMaster()
 			else tvp = NULL;
 			break;
 
-		case STATE_SHELL:
+		case STATE_PIPE:
 			/* Do nothing. We're just a pipe from TCP to the shell 
 			   process and back now */
 			break;
@@ -340,18 +340,19 @@ void processStateTelopt()
 	}
 	else logprintf(master_pid,"Client didn't send username.\n");
 
+	/* If we don't have a shell program set then we pass any user input
+	   through to the login program */
 	if (!shell_exec_argv)
 	{
-		setState(STATE_SHELL);
+		setState(STATE_PIPE);
 		runSlave();
 		return;
 	}
 
-	/* Exec shell program given on command line with -s. Linux only */
+	/* Send our own login prompt */
 	sockprintf(login_prompt);
 
-	/* If we got the username from the client enviroment info then jump to 
-	   password input */
+	/* If we got the username from the client then jump to password input */
 	if (telopt_username)
 	{
 		sockprintf("%s\r\n",telopt_username);

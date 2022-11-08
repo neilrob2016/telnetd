@@ -195,7 +195,7 @@ void processChar(u_char c)
 
 	switch(state)
 	{
-	case STATE_SHELL:
+	case STATE_PIPE:
 		/* Just write through to pty, no processing. */
 		write(ptym,&c,1);
 		prev_c = c;
@@ -289,7 +289,7 @@ void processLine()
 		case 1:
 			logprintf(master_pid,"User validated as \"%s\".\n",
 				username);
-			setState(STATE_SHELL);
+			setState(STATE_PIPE);
 			runSlave();
 			break;
 		default:

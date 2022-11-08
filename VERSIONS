@@ -55,3 +55,8 @@ Sept 2021
 - Added login_svrerr_msg config option
 - Added login_timeout_msg config option
 - Added README
+
+
+20221108
+========
+- Fixed some bugs I missed and minor code updates.

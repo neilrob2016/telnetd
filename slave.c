@@ -45,13 +45,11 @@ void runSlave()
 		kill(getppid(),SIGUSR1);
 
 		/* Reset signals back to their default except for handled ones
-		   which gets done automatically by exec() */
+		   which gets doe automatically by exec() */
 		signal(SIGCHLD,SIG_DFL);
 		signal(SIGHUP,SIG_DFL);
 		sigprocmask(SIG_UNBLOCK,&sigmask,NULL);
 
-		/* Shell is not an option for MacOS because the password
-		   checking code in checkLogin() only works under linux */
 		if (shell_exec_argv)
 		{
 			logprintf(slave_pid,"Setting up enviroment for user \"%s\", uid %d...\n",
@@ -88,13 +86,11 @@ void runSlave()
 		{
 			if (!flags.append_user) telopt_username = NULL;
 
-			/* Login program and args given in .cfg? */
+			/* Login program and args given in .cfg */
 			if (login_exec_argv)
 			{
 				if (telopt_username) 
 				{
-					sockprintf("%s%s\n",
-						login_prompt,telopt_username);
 					addWordToArray(
 						&login_exec_argv,
 						telopt_username,
@@ -105,11 +101,7 @@ void runSlave()
 			}
 			else
 			{
-				if (telopt_username)
-				{
-					sockprintf("%s%s\n",
-						login_prompt,telopt_username);
-				}
+				/* No login or shell program given in config */
 				prog = LOGIN_PROG;
 				exec_argv = def_exec_argv;
 				exec_argv[0] = prog;
@@ -125,6 +117,7 @@ void runSlave()
 					exec_argv[2] = NULL;
 				}
 			}
+
 			logprintf(slave_pid,"Executing login process...\n");
 		}
 

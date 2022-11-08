@@ -10,8 +10,6 @@
 #define MAINFILE
 #include "globals.h"
 
-#define NUM_ENC_METHODS 4
-
 void init();
 void parseCmdLine(int argc, char **argv);
 void version();
@@ -161,18 +159,30 @@ void version()
 void doChecks()
 {
 #ifndef __APPLE__
+	enum
+	{
+		ENC_DES,
+		ENC_MD5,
+		ENC_SHA256,
+		ENC_SHA512,
+		ENC_BLOWFISH,
+
+		NUM_ENC_METHODS
+	};
 	char *enc_code[NUM_ENC_METHODS] =
 	{
-		"1","2a","5","6"
+		"","1","2a","5","6"
 	};
 	char *enc_name[NUM_ENC_METHODS] =
 	{
+		"DES",
 		"MD5",
-		"Blowfish",
 		"SHA256",
-		"SHA512"
+		"SHA512",
+		"BLOWFISH"
 	};
 	char salt[7];
+	char *ptr;
 	int i;
 #endif
 	if (getpid())
@@ -190,8 +200,10 @@ void doChecks()
 		for(i=0;i < NUM_ENC_METHODS;++i)
 		{
 			sprintf(salt,"$%s$ab",enc_code[i]);
+			ptr = crypt("x",salt);
 			logprintf(0,"    %-8s: %s\n",
-				enc_name[i],crypt("x",salt) ? "YES" : "NO");
+				enc_name[i],
+				(!ptr || (i == ENC_BLOWFISH && ptr[3] != '$')) ? "NO" : "YES");
 		}
 #endif
 	}

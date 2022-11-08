@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20221106"
+#define SVR_VERSION "20221108"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -105,7 +105,7 @@ enum
 	STATE_TELOPT,
 	STATE_LOGIN,
 	STATE_PWD,
-	STATE_SHELL,
+	STATE_PIPE,
 
 	NUM_STATES
 };

@@ -21,7 +21,7 @@
 
 #include "build_date.h"
 
-#define VERSION       "20221107"
+#define VERSION       "20221108"
 #define FILENAME      "telnetd.pwd"
 #define MIN_USER_LEN  2
 #define MAX_USER_LEN  32 /* Seems to be a general unix limit */
@@ -217,13 +217,17 @@ void version()
 void listSupported()
 {
 	char salt[7];
+	char *ptr;
 	int i;
+
 	puts("Encryption types supported by crypt():");
 	for(i=0;i < NUM_ENC_METHODS;++i)
 	{
 		sprintf(salt,"%sab",enc_code[i]);
+		ptr = crypt("x",salt);
 		printf("    %-8s: %s\n",
-			enc_name[i],crypt("x",salt) ? "YES" : "NO");
+			enc_name[i],
+			(!ptr || (i == ENC_BLOWFISH && ptr[3] != '$')) ? "NO" : "YES");
 	}
 	exit(0);
 }
@@ -490,19 +494,15 @@ void writeEntry()
 #else
 		assert(asprintf(&salt,"%s%.2s$",enc_code[enc_type],username) != -1);
 #endif
-	/* Just to be sure. Should only happen if encryption type not
-	   supported */
+	/* If NULL with Linux the encryption type is not supported */
 	ptr = crypt(password,salt);
-	if (!(ptr = crypt(password,salt)))
+
+	/* Blowfish sanity check - Blowfish can appear to work but actually 
+	   doesn't. Can check by seeing if 2nd '$' is in output */
+	if (!(ptr = crypt(password,salt)) || 
+	     (enc_type == ENC_BLOWFISH && ptr[3] != '$'))
 	{
-		fprintf(stderr,"ERROR: crypt() returned NULL. Encryption type probably not supported.\n");
-		exit(1);
-	}
-	/* Sanity check - on old versions of glib Blowfish can appear to work
-	   but actually doesn't. Can check by seeing if 2nd '$' is in output */
-	if (enc_type == ENC_BLOWFISH && ptr[3] != '$')
-	{
-		fprintf(stderr,"ERROR: Blowfish encryption didn't work. Try another type.\n");
+		fprintf(stderr,"ERROR: crypt() failed. Encryption type probably not supported.\n");
 		exit(1);
 	}
 	if (!(fp = fopen(filename,"a")))

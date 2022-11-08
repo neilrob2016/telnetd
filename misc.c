@@ -4,7 +4,7 @@ void setState(int st)
 {
 	char *name[NUM_STATES] =
 	{
-		"NOT SET","TELOPT","LOGIN","PWD","SHELL"
+		"NOTSET","TELOPT","LOGIN","PWD","PIPE"
 	};
 	if (st == state) assert(0);
 	logprintf(getpid(),"Setting state to %s (%d)\n",name[st],st);

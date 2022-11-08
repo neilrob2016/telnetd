@@ -165,7 +165,7 @@ void parseConfigFile()
 	if (!login_max_attempts_msg)
 		login_max_attempts_msg = strdup(LOGIN_MAX_ATTEMPTS_MSG);
 	if (!login_svrerr_msg) login_svrerr_msg = strdup(LOGIN_SVRERR_MSG);
-	if (!login_timeout_msg) login_svrerr_msg = strdup(LOGIN_TIMEOUT_MSG);
+	if (!login_timeout_msg) login_timeout_msg = strdup(LOGIN_TIMEOUT_MSG);
 	if (!banned_user_msg) banned_user_msg = strdup(BANNED_USER_MSG);
 
 	printParams();
