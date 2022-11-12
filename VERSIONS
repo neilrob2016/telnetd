@@ -60,3 +60,9 @@ Sept 2021
 20221108
 ========
 - Fixed some bugs I missed and minor code updates.
+
+
+20221112
+========
+- Added pwd_asterisks config option.
+- Minor bug fixes and code updates.

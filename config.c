@@ -146,9 +146,10 @@ void parseConfigFile()
 		}
 	}
 #ifdef __APPLE__
-	/* Because we can't get user password info from MacOS as it doesn't 
-	   have the getpwnam() system function, it uses PAM instead which is
-	   a PITA */
+	/* Require our own password file as we can't get user password info 
+	   from MacOS as it doesn't have the getpwnam() system function, it 
+	   uses PAM instead which is a PITA and doesn't seem to be designed
+	   as a backend API */
 	if (shell_exec_argv && !pwd_file)
 	{
 		logprintf(0,"ERROR: On MacOS the shell_program option requires the pwd_file option to be set.\n");
@@ -183,6 +184,7 @@ void processConfigParam(char *param, char *value, int linenum)
 		"hexdump",
 		"login_append_user",
 		"login_preserve_env",
+		"pwd_asterisks",
 
 		/* Numeric values */
 		"port",
@@ -218,6 +220,7 @@ void processConfigParam(char *param, char *value, int linenum)
 		FIELD_HEXDUMP,
 		FIELD_LOGIN_APPEND_USER,
 		FIELD_LOGIN_PRESERVE_ENV,
+		FIELD_PWD_ASTERISKS,
 
 		/* Numeric */
 		FIELD_PORT,
@@ -299,6 +302,11 @@ void processConfigParam(char *param, char *value, int linenum)
 		case FIELD_LOGIN_PRESERVE_ENV:
 			if (yes == -1) goto VAL_ERROR;
 			flags.preserve_env = yes;
+			break;
+
+		case FIELD_PWD_ASTERISKS:
+			if (yes == -1) goto VAL_ERROR;
+			flags.pwd_asterisks = yes;
 			break;
 
 		/* Numeric values */
@@ -588,6 +596,7 @@ void parseInterface(char *addr)
 
 #define NOTSET    "<not set>\n"
 #define PRTSTR(S) (S ? S : "<not set>")
+#define YESNO(F)  (F ? "YES" : "NO")
 
 void printParams()
 {
@@ -605,43 +614,45 @@ void printParams()
 	logprintf(0,"    Network interface     : %s\n",PRTSTR(iface));
 	logprintf(0,"    Port                  : %d\n",port);
 	logprintf(0,"    Telopt timeout        : %d secs\n",telopt_timeout_secs);
-	logprintf(0,"    Be daemon             : %s\n",flags.daemon ? "YES" : "NO");
-	logprintf(0,"    Hexdump               : %s\n",flags.hexdump ? "YES" : "NO");
-	logprintf(0,"    Login append user     : %s\n",flags.append_user ? "YES" : "NO");
-	logprintf(0,"    Login preserve env    : %s\n",flags.preserve_env ? "YES" : "NO");
-	logprintf(0,"    Login process args    : ");
-	if (login_exec_argv_cnt)
+	logprintf(0,"    Be daemon             : %s\n",YESNO(flags.daemon));
+	logprintf(0,"    Hexdump               : %s\n",YESNO(flags.hexdump));
+	if (!shell_exec_argv)
+		logprintf(0,"    Login append user     : %s\n",YESNO(flags.append_user));
+
+	if (login_exec_argv)
 	{
+		logprintf(0,"    Login process args    : ");
                 for(i=0;i < login_exec_argv_cnt;++i)
 		{
 			if (i) logprintf(0,",");
 			logprintf(0,"%s",login_exec_argv[i]);
 		}
 		if (flags.append_user)
-			logprintf(0,",[TELNET USER]\n");
+			logprintf(0,",[TELNET USER]\n\n");
 		else
-			logprintf(0,"\n");
+			logprintf(0,"\n\n");
+		return;
 	}
-	else if (shell_exec_argv) logprintf(0,NOTSET);
-	else
+	if (!shell_exec_argv)
 	{
-		logprintf(0,"%s%s%s\n",
+		/* Will be calling default LOGIN_PROG */
+		logprintf(0,"    Login preserve env    : %s\n",
+			YESNO(flags.preserve_env));
+		logprintf(0,"    Login process args    : %s%s%s\n\n",
 			LOGIN_PROG,
 			flags.preserve_env ? ",-p" : "",
 			flags.append_user ? ",[TELNET USER]" : "");
+		return;
 	}
+
+	/* The rest only apply if the shell_program field is set */
 	logprintf(0,"    Shell process args    : ");
-	if (shell_exec_argv)
+	for(ptr=shell_exec_argv;*ptr;++ptr)
 	{
-                for(ptr=shell_exec_argv;*ptr;++ptr)
-		{
-			if (ptr != shell_exec_argv) logprintf(0,",");
-			logprintf(0,"%s",*ptr);
-		}
-		logprintf(0,"\n");
+		if (ptr != shell_exec_argv) logprintf(0,",");
+		logprintf(0,"%s",*ptr);
 	}
-	else logprintf(0,NOTSET);
-	logprintf(0,"    Login prompt          : ");
+	logprintf(0,"\n    Login prompt          : ");
 	if (login_prompt)
 		logprintf(0,"\"%s\"\n",login_prompt);
 	else
@@ -651,9 +662,12 @@ void printParams()
 		logprintf(0,"\"%s\"\n",pwd_prompt);
 	else
 		logprintf(0,NOTSET);
+	logprintf(0,"    Password asterisks    : %s\n",YESNO(flags.pwd_asterisks));
 	logprintf(0,"    Login incorrect msg   : \"%s\"\n",login_incorrect_msg);
+	logprintf(0,"    Login server error msg: \"%s\"\n",login_svrerr_msg);
 	logprintf(0,"    Login max attempts msg: \"%s\"\n",login_max_attempts_msg);
 	logprintf(0,"    Login max attempts    : %d\n",login_max_attempts);
+	logprintf(0,"    Login timeout message : \"%s\"\n",login_timeout_msg);
 	logprintf(0,"    Login timeout         : %d secs\n",login_timeout_secs);
 	logprintf(0,"    Login pause           : %d secs\n",login_pause_secs);
 	logprintf(0,"    Banned users          : ");

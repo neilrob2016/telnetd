@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20221108"
+#define SVR_VERSION "20221112"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -63,7 +63,7 @@
 
 #define LOGIN_INCORRECT_MSG    "Login incorrect."
 #define LOGIN_MAX_ATTEMPTS_MSG "Maximum login attempts reached."
-#define LOGIN_SVRERR_MSG       "Server error. Please contact your system administrator."
+#define LOGIN_SVRERR_MSG       "Server error. Contact your system administrator."
 #define LOGIN_TIMEOUT_MSG      "Timeout."
 #define BANNED_USER_MSG        "Login banned."
 
@@ -112,13 +112,14 @@ enum
 
 struct st_flags
 {
-	/* Command line */
+	/* Command line and/or config file */
 	unsigned daemon             : 1;
 	unsigned hexdump            : 1;
 	unsigned append_user        : 1;
 	unsigned preserve_env       : 1;
 	unsigned log_file_override  : 1;
 	unsigned log_fails_override : 1;
+	unsigned pwd_asterisks      : 1;
 	unsigned version            : 1;
 
 	/* Runtime */

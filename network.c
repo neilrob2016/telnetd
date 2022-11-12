@@ -186,12 +186,17 @@ void hexdump(u_char *start, u_char *end, int rx)
 /*** Do something with the non telopt character we've just received ***/
 void processChar(u_char c)
 {
+	int asterisks;
+	int print_char;
+
 	/* Telnet passes \r\0 for newlines, ignore the \0 */
 	if (prev_c == '\r' && !c)
 	{
 		prev_c = c;
 		return;
 	}
+
+	asterisks = 0;
 
 	switch(state)
 	{
@@ -203,39 +208,36 @@ void processChar(u_char c)
 	case STATE_TELOPT:
 		/* Ignore any user input in this state */
 		return;
+	case STATE_PWD:
+		if (!flags.echo && flags.pwd_asterisks) asterisks = 1;
+		break;
 	default:
 		break;
 	}
 	prev_c = c;
+	print_char = (flags.echo || asterisks);
 
-	if (flags.echo)
-	{
-		switch(c)
-		{
-		case '\r':
-		case '\n':
-			sockprintf("\r\n");
-			break;
-
-		case DELETE_KEY:
-			sockprintf("\b \b");
-			break;
-
-		default:
-			writeSock((char *)&c,1);
-		}
-	}
-
+	/* Deal with the character */
 	switch(c)
 	{
 	case '\r':
 	case '\n':
+		if (print_char && state != STATE_PWD) sockprintf("\r\n");
 		processLine();
 		return;
 
 	case DELETE_KEY:
-		if (line_buffpos) line_buffpos--;
+		if (line_buffpos)
+		{
+			line_buffpos--;
+			if (print_char) sockprintf("\b \b");
+		}
 		return;
+	default:
+		if (flags.echo)
+			writeSock((char *)&c,1);
+		else if (asterisks)
+			writeSock("*",1);
 	}
 
 	line[line_buffpos++] = c;

@@ -44,8 +44,7 @@ int validatePwd(char *password)
 	/* If we have a '.' in the hash thats the delimiter between the salt
 	   and the password hash, else look for the last '$' else just use the 
 	   1st 2 characters for the salt */
-	if ((hash = strchr(pwd,'.')) ||
-	    (hash = strrchr(pwd,'$')))
+	if ((hash = strchr(pwd,'.')) || (hash = strrchr(pwd,'$')))
 	{
 		len = (int)(hash - pwd);
 		asprintf(&salt,"%.*s",len,pwd);
@@ -61,7 +60,7 @@ int validatePwd(char *password)
 	free(salt);
 	return (cry ? !strcmp(cry,pwd) : 0);
 #endif
-	/* Prevents compiler warning */
+	/* Prevents compiler warning in MacOS */
 	return 0;
 }
 
@@ -177,7 +176,7 @@ int parseTelnetdPwdFile(char *password)
 	   extended encryption types supported by glibc which are:
 	      No $ = DES
 	      $1$  = MD5
-	      $2a$ = BLOWFISH 
+	      $2a$ = BLOWFISH (not in standard glibc)
 	      $5$  = SHA256
 	      $6$  = SHA512
 	*/
