@@ -8,7 +8,7 @@ static char *map_end;
 int validateTelnetdPwd(char *password);
 int mapTelnetdPwdFile();
 int parseTelnetdPwdFile(char *password);
-char *findEndOfPwd(char *ptr);
+char *findColon(char *ptr);
 
 /*** Validate the user password. 1 means valid, 0 means invalid, -1 means
      some kind of fatal error ***/
@@ -35,6 +35,8 @@ int validatePwd(char *password)
 		if (!(spwd = getspnam(userinfo->pw_name)))
 		{
 			sockprintf("ERROR: validatePwd(): getspnam(): %s\n",strerror(errno));
+			logprintf(master_pid,"ERROR: User \"%s\": validatePwd(): getspnam(): %s\n",
+				username,strerror(errno));
 			return -1;
 		}
 		pwd = spwd->sp_pwdp;
@@ -56,7 +58,7 @@ int validatePwd(char *password)
 		hash = pwd + 2;
 	}
 	if (!(cry = crypt(password,salt)))
-		logprintf(master_pid,"ERROR: validatePwd(): crypt() returned NULL");
+		logprintf(master_pid,"ERROR: User \"%s\": validatePwd(): crypt() returned NULL.\n",username);
 	free(salt);
 	return (cry ? !strcmp(cry,pwd) : 0);
 #endif
@@ -126,52 +128,33 @@ int mapTelnetdPwdFile()
 /*** Go through the file and find the user which is in global 'username' ***/
 int parseTelnetdPwdFile(char *password)
 {
+	char *field[NUM_PWD_FIELDS];
 	char *ptr;
-	char *colon;
-	char *end;
 	char *salt;
 	char *epwd;
+	char *estr;
 	char c;
 	int linenum;
 
-	/* Parse the file */
-	for(ptr=map_start,linenum=1;ptr < map_end;++ptr,++linenum)
+	logprintf(master_pid,"Reading password file \"%s\"...\n",pwd_file);
+
+	/* Go through each line until we find user we're looking for */
+	for(ptr=map_start,linenum=1;ptr < map_end;++linenum)
 	{
-		/* Find start of line */
-		for(;*ptr == '\n' && ptr < map_end;++ptr,++linenum);
-		if (ptr == map_end) break;
-
-		/* Manually added comments are allowed in the file */
-		if (*ptr == '#') 
-		{
-			ptr = findEndOfPwd(ptr+1);
-			continue;
-		}
-
-		/* Find colon seperator */
-		for(colon=ptr;
-		    *colon != ':' && *colon != '\n' && colon < map_end;++colon);
-		if (*colon != ':')
-		{
-			logprintf(master_pid,"WARNING: parseTelnetdPwd(): Line %d corrupted in \"%s\".\n",
-				linenum,pwd_file);
-			ptr = findEndOfPwd(colon);
-			continue;
-		}
-		*colon = 0;
-		if (!strcmp(username,ptr)) goto FOUND_USER;
-		ptr = findEndOfPwd(colon+1);
+		ptr = splitPwdLine(ptr,map_end,field);
+		if (!field[PFL_USER]) continue;
+		if (!strcmp(username,field[PFL_USER])) goto FOUND_USER;
 	}
+	/* User not found */
 	return 0;
 
 	FOUND_USER:
-	epwd = colon + 1;
-	end = findEndOfPwd(epwd);
-	*end = 0;
+	epwd = field[PFL_EPWD];
+	estr = field[PFL_EXEC_STR];
 
-	/* Sanity check */
-	if (strlen(epwd) < 4) return 0;
-
+	/* Sanity checks */
+	if (!epwd || strlen(epwd) < 4) return -1;
+	
 	/* If the encrypted password has '$' at start then its one of the
 	   extended encryption types supported by glibc which are:
 	      No $ = DES
@@ -187,8 +170,8 @@ int parseTelnetdPwdFile(char *password)
 		/* Have to flag this because MacOS crypt() will happily try
 		   and decrypt a non DES encryption because the dollar chars 
 		   have no special meaning for it */
-		logprintf(master_pid,"ERROR: parseTelnetdPwd(): Only DES encryption is supported by MacOS crypt() on line %d in \"%s\"\n",
-			linenum,pwd_file);
+		logprintf(master_pid,"ERROR: User \"%s\": parseTelnetdPwd(): Only DES encryption is supported by MacOS crypt() on line %d.\n",
+			username,linenum);
 		return -1;
 #endif
 		assert(asprintf(&salt,"$%c$%.2s$",c,username) != -1);
@@ -197,22 +180,31 @@ int parseTelnetdPwdFile(char *password)
 
 	if (!(ptr = crypt(password,salt)))
 	{
-		if (epwd[2] == '$')
-			logprintf(master_pid,"ERROR: parseTelnetdPwd(): crypt() returned NULL. Possibly encryption type \"%c\" not supported.\n",c);
-		else
-			logprintf(master_pid,"ERROR: parseTelnetdPwd(): crypt() returned NULL. Possibly encryption type \"%c%c\" not supported.\n",c,epwd[2]);
+		logprintf(master_pid,"ERROR: User \"%s\": parseTelnetdPwd(): crypt() returned NULL. Possibly encryption type not supported on line %d.\n",
+			username,linenum);
+		return -1;
 	}
 	free(salt);
 
-	return ptr ? (!strcmp(ptr,epwd)) : -1;
-}
+	/* If password doesn't match then return before we bother parsing
+	   the exec line */
+	if (strcmp(ptr,epwd)) return 0;
+	if (!estr) return 1;
 
-
-
-
-/*** Also look for colon as in the future I might add further fields ***/
-char *findEndOfPwd(char *ptr)
-{
-	for(;*ptr != '\n' && *ptr != ':' && ptr < map_end;++ptr);
-	return ptr;
+	/* Overwrite global shell exec string. Because we're a forked process 
+	   this won't affect anyone else. Don't do login_exec* because we 
+	   wouldn't know which program the user wanted until they'd given
+	   their name at a login prompt! Catch 22 */
+	freeWordArray(shell_exec_argv,shell_exec_argv_cnt);
+	splitString(estr,NULL,&shell_exec_argv,&shell_exec_argv_cnt);
+	if (shell_exec_argv_cnt < 1)
+	{
+		logprintf(master_pid,"ERROR: User \"%s\": parseTelnetdPwd(): Empty or invalid exec string on line %d.\n",
+			username,linenum);
+		return -1;
+	}
+	parsePath(&shell_exec_argv[0]);
+	logprintf(master_pid,"User \"%s\" shell exec string: \"%s\"\n",
+		username,estr);
+	return 1;
 }

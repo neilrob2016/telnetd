@@ -66,3 +66,11 @@ Sept 2021
 ========
 - Added pwd_asterisks config option.
 - Minor bug fixes and code updates.
+
+
+20221202
+========
+- Added user shell exec string to telnetd.pwd file and updated both tduser
+  and telnetd.
+- Minor bug fixes and code updates.
+

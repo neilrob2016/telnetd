@@ -21,7 +21,7 @@
 
 #include "build_date.h"
 
-#define VERSION       "20221108"
+#define VERSION       "20221130"
 #define FILENAME      "telnetd.pwd"
 #define MIN_USER_LEN  2
 #define MAX_USER_LEN  32 /* Seems to be a general unix limit */
@@ -69,6 +69,7 @@ struct termios saved_tio;
 char *username;
 char *password;
 char *filename;
+char *shell_str;
 char *map_start;
 char *map_end;
 int kbraw;
@@ -125,6 +126,7 @@ void parseConfigFile(int argc, char **argv)
 
 	username = NULL;
 	password = NULL;
+	shell_str = NULL;
 	filename = NULL;
 	enc_type = ENC_DES;
 
@@ -138,9 +140,11 @@ void parseConfigFile(int argc, char **argv)
 		switch(c)
 		{
 #ifndef __APPLE__
-		case 'l': listSupported();
+		case 'l':
+			listSupported();
 #endif
-		case 'v': version();
+		case 'v':
+			version();
 		}
 
 		if (i == argc - 1) goto USAGE;
@@ -155,6 +159,9 @@ void parseConfigFile(int argc, char **argv)
 			break;
 		case 'f':
 			filename = argv[++i];
+			break;
+		case 's':
+			shell_str = argv[++i];
 			break;
 #ifndef __APPLE__
 		/* MacOS crypt() is limited to DES wheres glib crypt() is far 
@@ -178,6 +185,9 @@ void parseConfigFile(int argc, char **argv)
 	printf("Usage: %s\n"
 	       "       -u <username>\n"
 	       "       -p <password>\n"
+	       "       -s <exec string>     : User shell program and args. This overrides the\n"
+	       "                              default system wide field in telnetd.cfg.\n"
+	       "                              Default = none\n"
 	       "       -f <password file>   : Default = \"%s\"\n"
 #ifndef __APPLE__
 	       "       -e <encryption type> : Options are DES,MD5,SHA256,SHA512 and BFISH.\n"
@@ -220,7 +230,7 @@ void listSupported()
 	char *ptr;
 	int i;
 
-	puts("Encryption types supported by crypt():");
+	puts("Supported by crypt() on this system:");
 	for(i=0;i < NUM_ENC_METHODS;++i)
 	{
 		sprintf(salt,"%sab",enc_code[i]);
@@ -449,6 +459,7 @@ void checkNewUser()
 		if (ptr == map_end) return;
 
 		/* Comments can be manually added */
+		colon = ptr;
 		if (*ptr == '#') goto FIND_END;
 
 		/* Find colon. Can't use strchr() as no null */
@@ -485,6 +496,7 @@ void writeEntry()
 	FILE *fp;
 	char *salt;
 	char *ptr;
+	int ret;
 
 	if (enc_type == ENC_DES)
 		assert(asprintf(&salt,"%.2s",username) != -1);
@@ -510,9 +522,17 @@ void writeEntry()
 		perror("ERROR: fopen()");
 		exit(1);
 	}
-	if (fprintf(fp,"%s:%s\n",username,ptr) == -1)
-		perror("ERROR: fprintf()");
+	if (shell_str)
+		ret = fprintf(fp,"%s:%s:%s\n",username,ptr,shell_str);
+	else
+		ret = fprintf(fp,"%s:%s\n",username,ptr);
+
 	fclose(fp);
+	if (ret == -1)
+	{
+		perror("ERROR: fprintf()");
+		exit(1);
+	}
 
 	printf("Username \"%s\" added to \"%s\" with %s encryption.\n",
 		username,filename,enc_name[enc_type]);

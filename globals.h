@@ -40,7 +40,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20221112"
+#define SVR_VERSION "20221202"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -109,6 +109,17 @@ enum
 
 	NUM_STATES
 };
+
+
+enum
+{
+	PFL_USER,
+	PFL_EPWD,
+	PFL_EXEC_STR,
+
+	NUM_PWD_FIELDS
+};
+
 
 struct st_flags
 {
@@ -224,9 +235,10 @@ u_char *parseTelopt(u_char *p, u_char *end);
 /* split.c */
 char *splitString(char *str, char *end, char ***words, int *word_cnt);
 void  addWordToArray(char ***words, char *word, char *end, int *word_cnt);
+void  freeWordArray(char **words, int word_cnt);
+char *splitPwdLine(char *line, char *map_end, char **field);
 
 /* misc.c */
 void setState(int st);
+void parsePath(char **path);
 void parentExit(int code);
-
-

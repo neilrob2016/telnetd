@@ -57,6 +57,7 @@ void init()
 	banned_users = NULL;
 	banned_users_cnt = 0;
 	shell_exec_argv = NULL;
+	shell_exec_argv_cnt = 0;
 	login_exec_argv = NULL;
 	login_exec_argv_cnt = 0;
 	log_file_max_fails = LOG_FILE_MAX_FAILS;

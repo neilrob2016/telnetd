@@ -34,10 +34,17 @@ you wish to be exec'd. It doesn't have to be /bin/login.
 
 Setup
 -----
-As shipped telnetd is set up to run shell_program /bin/bash which requires
-you to create a telnetd.pwd file using tduser. eg:
+As shipped telnetd is set up to run shell_program /bin/bash. A sample 
+telnetd.pwd file is provided with "root", password "test". To add further
+users do:
 
 tduser -u mylogin -p mypasswd
+
+The password file is only used with the shell_program option. On Linux if
+its not given then the standard password system is used but on MacOS it has to 
+be used if shell_program is given, see below. If you want to use the standard 
+login system comment it out and either uncomment login_program or leave it as 
+the default of /bin/login.
 
 Then you can log on on the default port 4000. Modify telnetd.cfg to set the
 port to 23 but you'll have to run telnetd as root for that to work.
@@ -46,10 +53,11 @@ port to 23 but you'll have to run telnetd as root for that to work.
 MacOS notes
 -----------
 1)
-The pwd_file field to be set if shell_program is set. This is because the MacOS
-user info and login system is obtuse and doesn't use the standard *nix API 
-which includes getpwnam() so telnetd can't obtain the user password from MacOS.
-This doesn't apply if /bin/login is used as that does it itself.
+The pwd_file field must be set if shell_program is set. This is because the 
+MacOS user info and login system is obtuse and doesn't use the standard *nix 
+API which includes getpwnam() so telnetd can't currently obtain the user 
+password from MacOS. This doesn't apply if /bin/login is used as that does it 
+by itself.
 2)
 The user will not be added to the "who" listing as MacOS does not use the 
 standard *nix method but some obscure method that writes to /var/log/asl/BB* 

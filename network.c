@@ -276,7 +276,7 @@ void processLine()
 		{
 		case -1:
 			sockprintf("\r\n%s\r\n\r\n",login_svrerr_msg);
-			logprintf(master_pid,"ERROR: processLine(): validatePwd() returned -1 for user \"%s\".\n",username);
+			logprintf(master_pid,"ERROR: User \"%s\": processLine(): validatePwd() returned -1.\n",username);
 			masterExit(0);
 			/* Won't get here */
 			break;
@@ -289,8 +289,7 @@ void processLine()
 			setState(STATE_LOGIN);
 			break;
 		case 1:
-			logprintf(master_pid,"User validated as \"%s\".\n",
-				username);
+			logprintf(master_pid,"User \"%s\" validated.\n",username);
 			setState(STATE_PIPE);
 			runSlave();
 			break;

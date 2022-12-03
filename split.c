@@ -1,7 +1,8 @@
 #include "globals.h"
 
 
-/*** Split a string into individual words. Takes account of quotes. ***/
+/*** Split a space seperated string into individual words. Takes account of 
+     quotes. ***/
 char *splitString(char *str, char *end, char ***words, int *word_cnt)
 {
 	char *ptr;
@@ -75,4 +76,56 @@ void addWordToArray(char ***words, char *word, char *end, int *word_cnt)
 
 	++*word_cnt;
 	if (end) *end = c;
+}
+
+
+
+
+void freeWordArray(char **words, int word_cnt)
+{
+	int i;
+	for(i=0;i < word_cnt;++i) free(words[i]);
+	free(words);
+}
+
+
+
+
+/***
+ Split a line from the telnetd password file. Each line has the format:
+
+ #<comment>
+ or
+ <username>:<encrypted password>[:<exec line>]
+
+ The fields don't need to be alloced as "line" stays in scope while the
+ fields are parsed in validate.c
+***/
+char *splitPwdLine(char *line, char *map_end, char **field)
+{
+	char *p1;
+	char *p2;
+	char c;
+	int i;
+
+	for(i=0;i < NUM_PWD_FIELDS;++i) field[i] = NULL;
+
+	/* Assumes line is at start of a line */
+	for(i=0,c=0,p1=line;i < NUM_PWD_FIELDS && p1 < map_end && c != '\n';++i)
+	{
+		if (*p1 == '#' || *p1 == '\n') break;
+
+		/* Find colon */
+		for(p2=p1;p2 < map_end && *p2 != ':' && *p2 != '\n';++p2);
+		c = *p2;
+		*p2 = 0;
+		field[i] = p1;
+		p1 = p2 + 1;
+	}
+
+	if (p1 == map_end || c == '\n') return p1;
+	
+	/* Find end of line when more fields than expected */
+	for(;p1 < map_end && *p1 != '\n';++p1);
+	return p1 + 1;
 }

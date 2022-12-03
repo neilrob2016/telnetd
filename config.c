@@ -12,11 +12,9 @@
 
 
 void processConfigParam(char *param, char *value, int linenum);
-void parsePath(char **path);
 void parseBannedUsers(char *list);
 void parseInterface(char *addr);
 void printParams();
-void freeArray(char **words, int word_cnt);
 
 
 /*** If the config file is bad parseConfigFile() or processConfigParam() will 
@@ -37,7 +35,7 @@ void parseConfigFile()
 	int seek_nl;
 	int fd;
 
-	logprintf(0,">>> Parsing config file...\n");
+	logprintf(0,">>> Parsing config file \"%s\"...\n",config_file);
 
 	if ((fd=open(config_file,O_RDWR,0666)) == -1)
 	{
@@ -71,19 +69,19 @@ void parseConfigFile()
 	{
 		if (shell_exec_argv)
 		{
-			freeArray(shell_exec_argv,shell_exec_argv_cnt);
+			freeWordArray(shell_exec_argv,shell_exec_argv_cnt);
 			shell_exec_argv = NULL;
 			shell_exec_argv_cnt = 0;
 		}
 		if (login_exec_argv)
 		{
-			freeArray(login_exec_argv,login_exec_argv_cnt);
+			freeWordArray(login_exec_argv,login_exec_argv_cnt);
 			login_exec_argv = NULL;
 			login_exec_argv_cnt = 0;
 		}
 		if (banned_users)
 		{
-			freeArray(banned_users,banned_users_cnt);
+			freeWordArray(banned_users,banned_users_cnt);
 			banned_users = NULL;
 			banned_users_cnt = 0;
 		}
@@ -120,7 +118,7 @@ void parseConfigFile()
 					words[0],linenum);
 				parentExit(-1);
 			}
-			freeArray(words,word_cnt);
+			freeWordArray(words,word_cnt);
 		}
 		else ++ptr;
 	}
@@ -140,10 +138,7 @@ void parseConfigFile()
 			parentExit(1);
 		}
  		if (!shell_exec_argv)
-		{
-			logprintf(0,"ERROR: The shell_program option must be set if pwd_file is given.\n");
-			parentExit(1);
-		}
+			logprintf(0,"WARNING: The pwd_file field is set but shell_program field is not.\n");
 	}
 #ifdef __APPLE__
 	/* Require our own password file as we can't get user password info 
@@ -268,7 +263,6 @@ void processConfigParam(char *param, char *value, int linenum)
 		is_num = 1;
 		ivalue = atoi(value);
 	}
-	shell_exec_argv_cnt = 0;
 
 	for(i=0;i < NUM_PARAMS;++i)
 	{
@@ -469,73 +463,6 @@ void processConfigParam(char *param, char *value, int linenum)
 
 
 
-/*** Parse the path for tilda paths. eg: ~ or ~fred ***/
-void parsePath(char **path)
-{
-	static char *home_dir = NULL;
-	struct passwd *pwd;
-	char *str;
-	char *ptr;
-	char *dir;
-	char *newpath;
-	int slash;
-
-	str = *path;
-
-	/* Only deal with tilda if its the first character */
-	if (str[0] != '~') return;
-
-	++str;
-
-	/* Get end of first path section */
-	for(ptr=str,slash=0;*ptr;++ptr)
-	{
-		if (*ptr == '/')
-		{
-			slash = 1;
-			break;
-		}
-	}
-	*ptr = 0;
-
-	/* Can have ~ or ~<user> */
-	if (isalpha(*str))
-	{
-		pwd = getpwnam(str);
-		if (!pwd)
-		{
-			logprintf(0,"ERROR: parsePath(): Cannot get home directory of user \"%s\".\n",str);
-			parentExit(-1);
-		}
-		dir = pwd->pw_dir;
-	}
-	else
-	{
-		if (!home_dir)
-		{
-			pwd = getpwuid(getuid());
-			if (!pwd || !pwd->pw_dir)
-			{
-				logprintf(0,"ERROR: parsePath(): Cannot get home directory for user id %d.\n",getuid());
-				parentExit(-1);
-			}
-			home_dir = strdup(pwd->pw_dir);
-		}
-		dir = home_dir;
-	}
-	
-	/* Set new path */
-	if (slash)
-		asprintf(&newpath,"%s/%s",dir,ptr+1);
-	else
-		newpath = strdup(dir);
-	free(*path);
-	*path = newpath;
-}
-
-
-
-
 void parseBannedUsers(char *list)
 {
 	char *user;
@@ -600,7 +527,6 @@ void parseInterface(char *addr)
 
 void printParams()
 {
-	char **ptr;
 	int i;
 
 	/* Don't need parent id as we're doing short log lines */
@@ -621,7 +547,7 @@ void printParams()
 
 	if (login_exec_argv)
 	{
-		logprintf(0,"    Login process args    : ");
+		logprintf(0,"    Login exec arguments  : ");
                 for(i=0;i < login_exec_argv_cnt;++i)
 		{
 			if (i) logprintf(0,",");
@@ -638,7 +564,7 @@ void printParams()
 		/* Will be calling default LOGIN_PROG */
 		logprintf(0,"    Login preserve env    : %s\n",
 			YESNO(flags.preserve_env));
-		logprintf(0,"    Login process args    : %s%s%s\n\n",
+		logprintf(0,"    Login exec arguments  : %s%s%s\n\n",
 			LOGIN_PROG,
 			flags.preserve_env ? ",-p" : "",
 			flags.append_user ? ",[TELNET USER]" : "");
@@ -646,11 +572,11 @@ void printParams()
 	}
 
 	/* The rest only apply if the shell_program field is set */
-	logprintf(0,"    Shell process args    : ");
-	for(ptr=shell_exec_argv;*ptr;++ptr)
+	logprintf(0,"    Shell exec arguments  : ");
+	for(i=0;i < shell_exec_argv_cnt;++i)
 	{
-		if (ptr != shell_exec_argv) logprintf(0,",");
-		logprintf(0,"%s",*ptr);
+		if (i) logprintf(0,",");
+		logprintf(0,"%s",shell_exec_argv[i]);
 	}
 	logprintf(0,"\n    Login prompt          : ");
 	if (login_prompt)
@@ -683,14 +609,4 @@ void printParams()
 	else logprintf(0,"<none>\n");
 	logprintf(0,"    Banned user message   : \"%s\"\n",banned_user_msg);
 	logprintf(0,"\n");
-}
-
-
-
-
-void freeArray(char **array, int entry_cnt)
-{
-	int i;
-	for(i=0;i < entry_cnt;++i) free(array[i]);
-	free(array);
 }

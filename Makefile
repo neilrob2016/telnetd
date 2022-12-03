@@ -3,7 +3,7 @@ ifeq ($(UNAME),Linux)
 	CLIB=-lcrypt
 endif
 
-CC=cc 
+CC=cc  
 
 # If you're feeling brave you can try and compile it on ARM Linux
 #CC=aarch64-poky-linux-gcc --sysroot=/opt/fsl-imx-wayland/4.19-warrior/sysroots/aarch64-poky-linux
