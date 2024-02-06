@@ -186,8 +186,10 @@ void doChecks()
 	char *ptr;
 	int i;
 #endif
-	if (getpid())
-		logprintf(0,"WARNING: Not running as root. Some functionality may not be available.\n");
+	if (getuid())
+	{
+		logprintf(0,"WARNING: Running as uid %d not root. Some functionality may not be available.\n",getuid());
+	}
 
 	/*** See which cryptographic functions are supported by crypt(). Just 
 	     prints warnings to the log ***/
@@ -352,7 +354,7 @@ void mainloop()
 
 void hupHandler(int sig)
 {
-	logprintf(parent_pid,">>> SIGNAL %d (SIGHUP), re-reading config...\n",SIGHUP);
+	logprintf(parent_pid,">>> SIGNAL %d (SIGHUP), re-reading config...\n",sig);
 	bzero(&flags,sizeof(flags));
 	flags.sighup = 1;
 	parseConfigFile();

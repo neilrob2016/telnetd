@@ -172,17 +172,13 @@ void notifyWinSize()
 
 
 /*** If we didn't do this then the user login would be invisible to the 'who'
-     command etc. The entry is removed automatically by init when the process 
-     exits. Linux only since MacOS never had the set/put API and its login 
-     used to manually update utmp. Now it uses some proprietary binary files 
-     /var/log/asl/BB* to store this info. To hell with messing around with 
-     those ***/
+     command etc. The entry is removed automatically by the OS when the process
+     exits. ***/
 void addUtmpEntry()
 {
-#ifndef __APPLE__
-	struct utmp entry;
-	bzero(&entry,sizeof(entry));
+	struct utmpx entry;
 
+	bzero(&entry,sizeof(entry));
 	entry.ut_type = USER_PROCESS;
 	entry.ut_pid = getpid();
 	strcpy(entry.ut_user,userinfo->pw_name);
@@ -191,9 +187,7 @@ void addUtmpEntry()
 	time((time_t *)&entry.ut_tv.tv_sec);
 
 	/* Move to start of utmp file */
-	setutent();
-
-	if (!pututline(&entry))
-		logprintf(slave_pid,"ERROR: addUtmpEntry(): pututline(): %s\n",strerror(errno));
-#endif
+	setutxent();
+	if (!pututxline(&entry))
+		logprintf(slave_pid,"ERROR: addUtmpEntry(): pututxline(): %s\n",strerror(errno));
 }

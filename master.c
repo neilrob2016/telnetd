@@ -253,13 +253,14 @@ void sendMOTD()
 /*** Get the number of users/logins on the system for MOTD ***/
 int getUserCount(int unique)
 {
+	struct utmpx *ux;
 	int cnt;
 	int i;
-#ifdef __APPLE__
-	struct utmpx *ux;
 
 	user_list = NULL;
 	unique_cnt = 0;
+
+	setutxent();
 	for(cnt=0;(ux = getutxent());)
 	{
 		if (ux->ut_type == USER_PROCESS)
@@ -271,32 +272,7 @@ int getUserCount(int unique)
 		}
 	}
 	endutxent();
-#else
-	struct utmp u;
-	int fd;
 
-	user_list = NULL;
-	unique_cnt = 0;
-	if ((fd = open("/var/run/utmp",O_RDONLY)) == -1 &&
-	    (fd = open("/var/log/utmp",O_RDONLY)) == -1 &&
-	    (fd = open("/var/adm/utmp",O_RDONLY)) == -1 &&
-	    (fd = open("/etc/utmp",O_RDONLY)) == -1)
-	{
-		logprintf(master_pid,"ERROR: getUserCount(): open(): %s\n",strerror(errno));
-		return 0;
-	}
-	for(cnt=0;read(fd,(char *)&u,sizeof(u));)
-	{
-		if (u.ut_type == USER_PROCESS)
-		{
-			if (unique)
-				addUserToUniqueList(u.ut_user);
-			else
-				++cnt;
-		}
-	}
-	close(fd);
-#endif
 	if (unique)
 	{
 		/* Free the list */

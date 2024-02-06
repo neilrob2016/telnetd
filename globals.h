@@ -15,12 +15,10 @@
 #include <pwd.h>
 #include <ctype.h>
 #include <ifaddrs.h>
-#ifdef __APPLE__
 #include <utmpx.h>
-#else
+#ifndef __APPLE__
 #include <shadow.h>
 #include <crypt.h>
-#include <utmp.h>
 #endif
 #include <errno.h>
 #include <assert.h>
@@ -40,7 +38,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20221202"
+#define SVR_VERSION "20240206"
 
 #define PORT                23
 #define BUFFSIZE            2000

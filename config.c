@@ -495,7 +495,7 @@ void parseInterface(char *addr)
 	struct ifaddrs *entry;
 
 	/* Valid IP address or interface name? */
-	if ((iface_in_addr.sin_addr.s_addr = inet_addr(addr)) != -1) return;
+	if ((int)(iface_in_addr.sin_addr.s_addr = inet_addr(addr)) != -1) return;
 
 	iface = strdup(addr);
 	if (getifaddrs(&addr_list) == -1)

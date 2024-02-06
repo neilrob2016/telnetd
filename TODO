@@ -1,4 +1,3 @@
-add user to "who" list in MacOS
-If bad config file on SIGHUP don't quit, carry on with current settings
-Allow more than one network interface to be specified in config
-further fields in telnetd.pwd?
+- If bad config file on SIGHUP don't quit, carry on with current settings
+- Allow more than one network interface to be specified in config
+- further fields in telnetd.pwd?

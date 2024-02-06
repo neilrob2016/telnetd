@@ -74,3 +74,10 @@ Sept 2021
   and telnetd.
 - Minor bug fixes and code updates.
 
+
+20240206
+========
+- User now added to "who" list on MacOS when using telnetd's own login system.
+- Consolidated some code and changed utmp calls to utmpx.
+- Minor bug fixes.
+- Added -Wextra compiler argument to Makefile.
