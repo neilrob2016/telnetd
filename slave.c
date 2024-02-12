@@ -31,7 +31,7 @@ void runSlave()
 	case 0:
 		/* In slave child process here */
 		slave_pid = getpid();
-		logprintf(slave_pid,"Slave process STARTED.\n");
+		logprintf(slave_pid,"STARTED: Slave process, ppid = %d.\n",master_pid);
 
 		/* Use setsid() so that when we open the pty slave it
 		   becomes the controlling tty */
@@ -101,7 +101,8 @@ void runSlave()
 			}
 			else
 			{
-				/* No login or shell program given in config */
+				/* No login or shell program given in config 
+				   so use default system one. */
 				prog = LOGIN_PROG;
 				exec_argv = def_exec_argv;
 				exec_argv[0] = prog;
@@ -129,14 +130,16 @@ void runSlave()
 		/* Exec logon/shell */
 		execve(prog,exec_argv,environ);
 
-		/* Don't write if the log goes to stdout as that will go to
-		   the user */
+		/* Don't write if the log goes to stdout as I/O has been
+		   redirected to the shell/login process and will be seen by
+		   the user so they'll get 2 error messages */
 		if (log_file)
 		{
 			logprintf(slave_pid,"ERROR: Exec failed: %s\n",
 				strerror(errno));
 		}
-		sockprintf("ERROR: Exec failed, can't continue.\n");
+		sockprintf("ERROR: Exec of \"%s\" failed: %s\n",
+			exec_argv[0],strerror(errno));
 		exit(1);
 
 	default:
@@ -181,9 +184,18 @@ void addUtmpEntry()
 	bzero(&entry,sizeof(entry));
 	entry.ut_type = USER_PROCESS;
 	entry.ut_pid = getpid();
-	strcpy(entry.ut_user,userinfo->pw_name);
-	strcpy(entry.ut_line,getPTYName());
-	strcpy(entry.ut_host,ipaddr);
+
+	/* Using the min lengths I found for these fields */
+	snprintf(entry.ut_user,32,"%s",userinfo->pw_name);
+	snprintf(entry.ut_line,32,"%s",getPTYName());
+	if (flags.store_host_in_utmp)
+	{
+		if (dnsaddr)
+			snprintf(entry.ut_host,256,"%s - %s",ipaddr,dnsaddr);
+		else
+			snprintf(entry.ut_host,256,"%s",ipaddr);
+	}
+
 	time((time_t *)&entry.ut_tv.tv_sec);
 
 	/* Move to start of utmp file */

@@ -1,5 +1,8 @@
 #include "globals.h"
 
+#define HEXDUMP_CHARS 10
+#define DELETE_KEY    127
+
 void hexdump(u_char *start, u_char *end, int rx);
 void processChar(u_char c);
 void processLine();
@@ -235,9 +238,9 @@ void processChar(u_char c)
 		return;
 	default:
 		if (flags.echo)
-			writeSock((char *)&c,1);
+			writeSock((u_char *)&c,1);
 		else if (asterisks)
-			writeSock("*",1);
+			writeSock((u_char *)"*",1);
 	}
 
 	line[line_buffpos++] = c;
@@ -308,7 +311,7 @@ void processLine()
 
 
 /*** Write down the socket ***/
-void writeSock(char *data, int len)
+void writeSock(u_char *data, int len)
 {
 	int bytes;
 	int i;
@@ -338,5 +341,5 @@ void writeSock(char *data, int len)
 		}
 		bytes += l;
 	}
-	if (flags.hexdump) hexdump((u_char *)data,(u_char *)data+len,0);
+	if (flags.hexdump) hexdump(data,data+len,0);
 }

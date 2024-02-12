@@ -40,6 +40,8 @@ users do:
 
 tduser -u mylogin -p mypasswd
 
+Or you can just called tduser with no options and it'll prompt you.
+
 The password file is only used with the shell_program option. On Linux if
 its not given then the standard password system is used but on MacOS it has to 
 be used if shell_program is given, see below. If you want to use the standard 
@@ -101,8 +103,6 @@ Usage: ./tduser
 Note: All arguments are optional. If username and/or password are not provided
       you will be prompted for them. This means they will not get stored in the
       shell history as they would using the command line arguments.
-
-
 
 
 Any bugs or issues email: neilrob2016@gmail.com

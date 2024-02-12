@@ -142,15 +142,15 @@ int parseTelnetdPwdFile(char *password)
 	for(ptr=map_start,linenum=1;ptr < map_end;++linenum)
 	{
 		ptr = splitPwdLine(ptr,map_end,field);
-		if (!field[PFL_USER]) continue;
-		if (!strcmp(username,field[PFL_USER])) goto FOUND_USER;
+		if (!field[PWD_USER]) continue;
+		if (!strcmp(username,field[PWD_USER])) goto FOUND_USER;
 	}
 	/* User not found */
 	return 0;
 
 	FOUND_USER:
-	epwd = field[PFL_EPWD];
-	estr = field[PFL_EXEC_STR];
+	epwd = field[PWD_EPWD];
+	estr = field[PWD_EXEC_STR];
 
 	/* Sanity checks */
 	if (!epwd || strlen(epwd) < 4) return -1;

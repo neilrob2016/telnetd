@@ -1,5 +1,14 @@
 #include "globals.h"
 
+#define LOGIN_PROMPT "login: "
+#define PWD_PROMPT   "password: "
+
+#define LOGIN_INCORRECT_MSG    "Login incorrect."
+#define LOGIN_MAX_ATTEMPTS_MSG "Maximum login attempts reached."
+#define LOGIN_SVRERR_MSG       "Server error. Contact your system administrator."
+#define LOGIN_TIMEOUT_MSG      "Timeout."
+#define BANNED_USER_MSG        "Login banned."
+
 #define SET_STR_FIELD(P) \
 	if (P) \
 	{ \
@@ -180,6 +189,8 @@ void processConfigParam(char *param, char *value, int linenum)
 		"login_append_user",
 		"login_preserve_env",
 		"pwd_asterisks",
+		"dns_lookup",
+		"store_host_in_utmp",
 
 		/* Numeric values */
 		"port",
@@ -216,6 +227,8 @@ void processConfigParam(char *param, char *value, int linenum)
 		FIELD_LOGIN_APPEND_USER,
 		FIELD_LOGIN_PRESERVE_ENV,
 		FIELD_PWD_ASTERISKS,
+		FIELD_DNS_LOOKUP,
+		FIELD_STORE_HOST_IN_UTMP,
 
 		/* Numeric */
 		FIELD_PORT,
@@ -301,6 +314,16 @@ void processConfigParam(char *param, char *value, int linenum)
 		case FIELD_PWD_ASTERISKS:
 			if (yes == -1) goto VAL_ERROR;
 			flags.pwd_asterisks = yes;
+			break;
+
+		case FIELD_DNS_LOOKUP:
+			if (yes == -1) goto VAL_ERROR;
+			flags.dns_lookup = yes;
+			break;
+
+		case FIELD_STORE_HOST_IN_UTMP:
+			if (yes == -1) goto VAL_ERROR;
+			flags.store_host_in_utmp = yes;
 			break;
 
 		/* Numeric values */
@@ -542,6 +565,7 @@ void printParams()
 	logprintf(0,"    Telopt timeout        : %d secs\n",telopt_timeout_secs);
 	logprintf(0,"    Be daemon             : %s\n",YESNO(flags.daemon));
 	logprintf(0,"    Hexdump               : %s\n",YESNO(flags.hexdump));
+	logprintf(0,"    Do DNS lookup         : %s\n",YESNO(flags.dns_lookup));
 	if (!shell_exec_argv)
 		logprintf(0,"    Login append user     : %s\n",YESNO(flags.append_user));
 
@@ -589,6 +613,7 @@ void printParams()
 	else
 		logprintf(0,NOTSET);
 	logprintf(0,"    Password asterisks    : %s\n",YESNO(flags.pwd_asterisks));
+	logprintf(0,"    Store host in utmp    : %s\n",YESNO(flags.store_host_in_utmp));
 	logprintf(0,"    Login incorrect msg   : \"%s\"\n",login_incorrect_msg);
 	logprintf(0,"    Login server error msg: \"%s\"\n",login_svrerr_msg);
 	logprintf(0,"    Login max attempts msg: \"%s\"\n",login_max_attempts_msg);

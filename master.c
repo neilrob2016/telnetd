@@ -20,10 +20,11 @@ void masterSigHandler(int sig);
 
 
 /*** Child master process executes from here ***/
-void runMaster()
+void runMaster(struct sockaddr_in *ip_addr)
 {
 	struct timeval tvs;
 	struct timeval *tvp;
+	struct hostent *host;
 	fd_set mask;
 
 	ptym = -1;
@@ -36,10 +37,24 @@ void runMaster()
 	telneg_start = time(0);
 	master_pid = getpid();
 	slave_pid = -1;
+	dnsaddr = NULL;
+
+	logprintf(master_pid,"STARTED: Master process, ppid = %d\n",parent_pid);
+
+	/* A host lookup can block for a while so we do it in this process 
+	   instead of in the main loop in the parent process */
+	if (flags.dns_lookup && (host = gethostbyaddr(
+		(char *)&(ip_addr->sin_addr.s_addr),
+		sizeof(ip_addr->sin_addr.s_addr),AF_INET)))
+	{
+		dnsaddr = strdup(host->h_name);
+	}
+
+	strcpy(ipaddr,inet_ntoa(ip_addr->sin_addr));
+	logprintf(master_pid,"CONNECTION: Socket = %d, address = %s (%s)\n",
+		sock,ipaddr,dnsaddr ? dnsaddr : "<not set>");
 
 	setState(STATE_TELOPT);
-
-	logprintf(master_pid,"Master process STARTED.\n");
 
 	/* Leave parents process group so ^C or ^\ on the parent process 
 	   doesn't kill the children. Need setpgrp(0,0) for BSD. Don't do
@@ -139,7 +154,7 @@ void sendMOTD()
 	struct tm *tms;
 	struct utsname uts;	
 	time_t now;
-	char out[BUFFSIZE+1];
+	u_char out[BUFFSIZE+1];
 	char str[100];
 	char c;
 	int len;
@@ -409,8 +424,9 @@ void readPTYMaster()
 		/* Read nothing, slave has exited */
 		logprintf(master_pid,"PTY %s closed.\n",getPTYName());
 		masterExit(0);
+		break;
 	default:
-		writeSock(ptybuff,len);
+		writeSock((u_char *)ptybuff,len);
 	}
 }
 
@@ -419,7 +435,7 @@ void readPTYMaster()
 
 void masterSigHandler(int sig)
 {
-	logprintf(master_pid,"Master process EXIT on signal %d.\n",sig);
+	logprintf(master_pid,"EXIT: Master process on signal %d.\n",sig);
 	masterExit(sig);
 }
 
@@ -444,20 +460,20 @@ void masterExit(int code)
 		}
 		else if (WIFEXITED(status))
 		{
-			logprintf(master_pid,"Slave process %d EXITED with code %d.\n",
+			logprintf(master_pid,"EXIT: Slave process %d with code %d.\n",
 				slave_pid,WEXITSTATUS(status));
 		}
 		else if (WIFSIGNALED(status))
 		{
-			logprintf(master_pid,"Slave process %d EXITED on signal %d%s\n",
+			logprintf(master_pid,"EXIT: Slave process %d on signal %d%s\n",
 				slave_pid,
 				WTERMSIG(status),
 				WCOREDUMP(status) ? " (core dumped)." : ".");
 		}
-		else logprintf(master_pid,"Slave process %d EXIT state unknown.\n",slave_pid);
+		else logprintf(master_pid,"EXIT: Slave process %d, state unknown.\n",slave_pid);
 	}
 	else logprintf(master_pid,"No slave process to reap.\n");
 
-	logprintf(master_pid,"Master process EXIT with code %d.\n",code);
+	logprintf(master_pid,"EXIT: Master process with code %d.\n",code);
 	exit(code);
 }

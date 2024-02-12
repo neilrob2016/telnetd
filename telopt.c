@@ -6,6 +6,7 @@
 
 #include "globals.h"
 
+#define IS_VAR_START(C) (C == NEW_ENV_VAR || C == ENV_USERVAR)
 
 void sendResponse(u_char com, u_char opt);
 void requestSubOption(u_char sb);
@@ -19,14 +20,15 @@ u_char *findSubOptEnd(u_char *p, u_char *end);
      terminal type, terminal/window size and X display string ***/
 void sendInitialTelopt()
 {
-	char mesg[16];
-	sprintf(mesg,"%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+	static u_char mesg[15] = 
+	{
 		TELNET_IAC,TELNET_WILL,TELOPT_SGA,
 		TELNET_IAC,TELNET_WILL,TELOPT_ECHO,
 		TELNET_IAC,TELNET_DO,TELOPT_TTYPE,
 		TELNET_IAC,TELNET_DO,TELOPT_NAWS,
-		TELNET_IAC,TELNET_DO,TELOPT_NEW_ENVIRON);
-	writeSock(mesg,16);
+		TELNET_IAC,TELNET_DO,TELOPT_NEW_ENVIRON
+	};
+	writeSock(mesg,15);
 }
 
 
@@ -210,11 +212,8 @@ u_char *parseTelopt(u_char *p, u_char *end)
 
 void sendResponse(u_char com, u_char opt)
 {
-	u_char mesg[3];
-	mesg[0] = TELNET_IAC;
-	mesg[1] = com;
-	mesg[2] = opt;
-	writeSock((char *)mesg,3);
+	u_char mesg[3] = { TELNET_IAC, com, opt };
+	writeSock(mesg,3);
 }
 
 
@@ -223,9 +222,11 @@ void sendResponse(u_char com, u_char opt)
 /*** Send a request for a sub comoption ***/
 void requestSubOption(u_char sb)
 {
-	char mesg[7];
-	sprintf(mesg,"%c%c%c%c%c%c",
-		TELNET_IAC,TELNET_SB,sb,TELQUAL_SEND,TELNET_IAC,TELNET_SE);
+	u_char mesg[6] =
+	{
+		TELNET_IAC,TELNET_SB,sb,
+		TELQUAL_SEND,TELNET_IAC,TELNET_SE
+	};
 	writeSock(mesg,6);
 }
 

@@ -86,11 +86,11 @@ void parsePath(char **path)
 void parentExit(int code)
 {
 	if (code > 0)
-		logprintf(parent_pid,"Parent process EXIT on signal %d.\n",code);
+		logprintf(parent_pid,"EXIT: Parent process on signal %d.\n",code);
 	else
 	{
 		code = -code;
-		logprintf(parent_pid,"Parent process EXIT with code %d.\n",code);
+		logprintf(parent_pid,"EXIT: Parent process with code %d.\n",code);
 	}
 	exit(code);
 }

@@ -38,7 +38,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20240206"
+#define SVR_VERSION "20240212"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -49,21 +49,10 @@
 #define LOG_FILE_MAX_FAILS  2
 
 #ifdef __APPLE__
-#define LOGIN_PROG     "/usr/bin/login"
+#define LOGIN_PROG "/usr/bin/login"
 #else
-#define LOGIN_PROG     "/bin/login"
+#define LOGIN_PROG "/bin/login"
 #endif
-#define CONFIG_FILE    "telnetd.cfg"
-#define LOGIN_PROMPT   "login: "
-#define PWD_PROMPT     "password: "
-#define HEXDUMP_CHARS  10
-#define DELETE_KEY     127
-
-#define LOGIN_INCORRECT_MSG    "Login incorrect."
-#define LOGIN_MAX_ATTEMPTS_MSG "Maximum login attempts reached."
-#define LOGIN_SVRERR_MSG       "Server error. Contact your system administrator."
-#define LOGIN_TIMEOUT_MSG      "Timeout."
-#define BANNED_USER_MSG        "Login banned."
 
 /* More useful macro names. Defined in arpa/telnet.h */
 #define TELNET_SE   SE
@@ -80,8 +69,6 @@
 #define TELNET_DO   DO
 #define TELNET_DONT DONT
 #define TELNET_IAC  IAC
-
-#define IS_VAR_START(C) (C == NEW_ENV_VAR || C == ENV_USERVAR)
 
 #ifndef MAINFILE
 #define EXTERN extern
@@ -111,9 +98,9 @@ enum
 
 enum
 {
-	PFL_USER,
-	PFL_EPWD,
-	PFL_EXEC_STR,
+	PWD_USER,
+	PWD_EPWD,
+	PWD_EXEC_STR,
 
 	NUM_PWD_FIELDS
 };
@@ -121,7 +108,7 @@ enum
 
 struct st_flags
 {
-	/* Command line and/or config file */
+	/* Config file flags */
 	unsigned daemon             : 1;
 	unsigned hexdump            : 1;
 	unsigned append_user        : 1;
@@ -129,6 +116,8 @@ struct st_flags
 	unsigned log_file_override  : 1;
 	unsigned log_fails_override : 1;
 	unsigned pwd_asterisks      : 1;
+	unsigned dns_lookup         : 1;
+	unsigned store_host_in_utmp : 1;
 	unsigned version            : 1;
 
 	/* Runtime */
@@ -173,6 +162,7 @@ EXTERN u_char buff[BUFFSIZE+1];
 EXTERN u_char line[BUFFSIZE+1];
 EXTERN char ptybuff[BUFFSIZE+1];
 EXTERN char ipaddr[20];
+EXTERN char *dnsaddr;
 EXTERN int buffpos;
 EXTERN int sock;
 EXTERN int term_height;
@@ -198,7 +188,7 @@ EXTERN char *telopt_username;
 void parseConfigFile();
 
 /* master_child.c */
-void runMaster();
+void runMaster(struct sockaddr_in *ip_addr);
 void setUserNameAndPwdState(char *uname);
 int  loginAllowed(char *uname);
 void checkLoginAttempts();
@@ -217,7 +207,7 @@ char *getPTYName();
 /* network.c */
 void createListenSocket();
 void readSock();
-void writeSock(char *data, int len);
+void writeSock(u_char *data, int len);
 
 /* validate.c */
 int validatePwd(char *password);

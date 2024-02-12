@@ -10,6 +10,9 @@
 #define MAINFILE
 #include "globals.h"
 
+#define CONFIG_FILE "telnetd.cfg"
+
+
 void init();
 void parseCmdLine(int argc, char **argv);
 void version();
@@ -285,12 +288,10 @@ void setUpSignals()
 void mainloop()
 {
 	struct linger lin;
-	struct hostent *host;
 	struct sockaddr_in ip_addr;
 	socklen_t size;
-	char *dns;
 
-	logprintf(parent_pid,"Parent process STARTED.\n");
+	logprintf(parent_pid,"STARTED: Parent process.\n");
 
 	size = sizeof(ip_addr);
 	lin.l_onoff = 1;
@@ -315,17 +316,6 @@ void mainloop()
 			logprintf(parent_pid,"WARNING: mainloop(): setsockopt(SO_LINGER): %s\n",
 				strerror(errno));
 		}
-		if ((host = gethostbyaddr(
-			(char *)&(ip_addr.sin_addr.s_addr),
-			sizeof(ip_addr.sin_addr.s_addr),
-			AF_INET)))
-		{
-			dns = host->h_name;
-		}
-		else dns = "<unknown>";
-
-		strcpy(ipaddr,inet_ntoa(ip_addr.sin_addr));
-		logprintf(parent_pid,"CONNECTION from %s (%s)\n",ipaddr,dns);
 
 		/* Don't want children inheriting this handler */
 		signal(SIGHUP,SIG_IGN);
@@ -338,7 +328,7 @@ void mainloop()
 			break;
 		case 0:
 			close(listen_sock);
-			runMaster();
+			runMaster(&ip_addr);
 			break;
 		default:
 			/* Reinstate handler for parent */
@@ -354,7 +344,8 @@ void mainloop()
 
 void hupHandler(int sig)
 {
-	logprintf(parent_pid,">>> SIGNAL %d (SIGHUP), re-reading config...\n",sig);
+	logprintf(parent_pid,"SIGNAL %d (%s): Re-reading config...\n",
+		sig,strsignal(sig));
 	bzero(&flags,sizeof(flags));
 	flags.sighup = 1;
 	parseConfigFile();
@@ -365,7 +356,7 @@ void hupHandler(int sig)
 
 void parentSigHandler(int sig)
 {
-	logprintf(parent_pid,">>> SIGNAL %d, exiting...\n",sig);
+	logprintf(parent_pid,"SIGNAL %d (%s): Exiting...\n",sig,strsignal(sig));
 	close(listen_sock);
 	parentExit(sig);
 }

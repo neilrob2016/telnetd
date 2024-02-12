@@ -21,7 +21,7 @@
 
 #include "build_date.h"
 
-#define VERSION       "20221130"
+#define VERSION       "20240212"
 #define FILENAME      "telnetd.pwd"
 #define MIN_USER_LEN  2
 #define MAX_USER_LEN  32 /* Seems to be a general unix limit */
@@ -142,6 +142,7 @@ void parseConfigFile(int argc, char **argv)
 #ifndef __APPLE__
 		case 'l':
 			listSupported();
+			break;
 #endif
 		case 'v':
 			version();

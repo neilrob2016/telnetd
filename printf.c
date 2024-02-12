@@ -27,7 +27,7 @@ void sockprintf(char *fmt, ...)
 	}
 	*s2 = 0;
 
-	if (len) writeSock((char *)out2,len);
+	if (len) writeSock(out2,len);
 }
 
 

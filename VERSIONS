@@ -81,3 +81,14 @@ Sept 2021
 - Consolidated some code and changed utmp calls to utmpx.
 - Minor bug fixes.
 - Added -Wextra compiler argument to Makefile.
+
+
+20240212
+========
+- Moved DNS lookup to child process so a slow or hung lookup doesn't hang the
+  main loop in the listening parent process.
+- Added dns_lookup and store_host_in_utmp options to the config file.
+- Minor log message alterations.
+- Other minor code improvements and bug fixes.
+- Minor update to tduser.c to prevent gcc warning.
+- Updated Makefile.
