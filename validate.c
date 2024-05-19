@@ -6,7 +6,7 @@ static char *map_start;
 static char *map_end;
 
 int validateTelnetdPwd(char *password);
-int mapTelnetdPwdFile();
+int mapTelnetdPwdFile(void);
 int parseTelnetdPwdFile(char *password);
 char *findColon(char *ptr);
 
@@ -91,7 +91,7 @@ int validateTelnetdPwd(char *password)
 
 /*** Map the file instead of reading it in 1 char at a time as its easier
      parsing it with pointers ***/
-int mapTelnetdPwdFile()
+int mapTelnetdPwdFile(void)
 {
 	int fd;
 

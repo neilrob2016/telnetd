@@ -13,13 +13,13 @@
 #define CONFIG_FILE "telnetd.cfg"
 
 
-void init();
+void init(void);
 void parseCmdLine(int argc, char **argv);
-void version();
-void beDaemon();
-void setUpSignals();
-void doChecks();
-void mainloop();
+void version(void);
+void beDaemon(void);
+void setUpSignals(void);
+void doChecks(void);
+void mainloop(void);
 void hupHandler(int sig);
 void parentSigHandler(int sig);
 
@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 
 
 
-void init()
+void init(void)
 {
 	config_file = CONFIG_FILE;
 	port = PORT;
@@ -53,6 +53,7 @@ void init()
 	login_svrerr_msg = NULL;
 	login_timeout_msg = NULL;
 	banned_user_msg = NULL;
+	banned_ip_msg = NULL;
 	login_max_attempts = LOGIN_MAX_ATTEMPTS;
 	login_pause_secs = LOGIN_PAUSE_SECS;
 	login_timeout_secs = LOGIN_TIMEOUT_SECS;
@@ -73,6 +74,9 @@ void init()
 	state = STATE_NOTSET;
 	parent_pid = getpid();
 	username[0] = 0;
+	iplist = NULL;
+	iplist_cnt = 0;
+	iplist_type = IP_NO_LIST;
 
 	bzero(&flags,sizeof(flags));
 }
@@ -142,7 +146,7 @@ void parseCmdLine(int argc, char **argv)
 
 
 
-void version()
+void version(void)
 {
 	logprintf(0,"\n*** %s ***\n\n",SVR_NAME);
 	logprintf(0,"Version   : %s\n",SVR_VERSION);
@@ -160,7 +164,7 @@ void version()
 
 
 /**** User id and crypt() check ***/
-void doChecks()
+void doChecks(void)
 {
 #ifndef __APPLE__
 	enum
@@ -218,7 +222,7 @@ void doChecks()
 
 
 
-void beDaemon()
+void beDaemon(void)
 {
 	int i;
 
@@ -259,7 +263,7 @@ void beDaemon()
 
 
 
-void setUpSignals()
+void setUpSignals(void)
 {
 	/* Not going to bother to reap in the parent process */
 	signal(SIGCHLD,SIG_IGN);
@@ -285,7 +289,7 @@ void setUpSignals()
 /********************************* RUNTIME **********************************/
 
 /*** Does what it says on the tin ***/
-void mainloop()
+void mainloop(void)
 {
 	struct linger lin;
 	struct sockaddr_in ip_addr;
@@ -308,6 +312,21 @@ void mainloop()
 				strerror(errno));
 			parentExit(-1);
 		}
+
+		strcpy(ipaddrstr,inet_ntoa(ip_addr.sin_addr));
+
+		/* See if in white/black list. Do this before we waste cycles
+		   doing a fork  */
+		if (!authorisedIP(&ip_addr))
+		{
+			logprintf(parent_pid,"CONNECTION REFUSED: Socket = %d, IP = %s (BANNED)\n",
+				sock,ipaddrstr);
+			if (banned_ip_msg) sockprintf("%s\r\n",banned_ip_msg);
+			close(sock);
+			continue;
+		}
+		logprintf(parent_pid,"CONNECTION: Socket = %d, IP = %s\n",
+			sock,ipaddrstr);
 
 		if (setsockopt(
 			sock,

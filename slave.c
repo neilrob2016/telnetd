@@ -8,11 +8,11 @@
 
 extern char **environ;
 
-void addUtmpEntry();
+void addUtmpEntry(void);
 
 
 /*** Fork off slave child process that will run bash/login ***/
-void runSlave()
+void runSlave(void)
 {
 	char **exec_argv;
 	char *def_exec_argv[4];
@@ -59,16 +59,18 @@ void runSlave()
 			   itself. Do it before we setuid as must be root. */
 			addUtmpEntry();
 
-			/* Switch to login user ids */
-			if (setuid(userinfo->pw_uid) == -1)
-			{
-				logprintf(slave_pid,"ERROR: setuid(%d): %s\n",
-					userinfo->pw_uid,strerror(errno));
-			}
+			/* Do this before we switch user */
 			if (setgid(userinfo->pw_gid) == -1)
 			{
 				logprintf(slave_pid,"ERROR: setgid(%d): %s\n",
 					userinfo->pw_gid,strerror(errno));
+			}
+
+			/* Switch to login user id */
+			if (setuid(userinfo->pw_uid) == -1)
+			{
+				logprintf(slave_pid,"ERROR: setuid(%d): %s\n",
+					userinfo->pw_uid,strerror(errno));
 			}
 			if (chdir(userinfo->pw_dir) == -1)
 			{
@@ -80,7 +82,7 @@ void runSlave()
 			prog = shell_exec_argv[0];
 			exec_argv = shell_exec_argv;
 
-			logprintf(slave_pid,"Executing shell process...\n");
+			logprintf(slave_pid,"Executing shell program \"%s\"...\n",prog);
 		}
 		else
 		{
@@ -119,7 +121,7 @@ void runSlave()
 				}
 			}
 
-			logprintf(slave_pid,"Executing login process...\n");
+			logprintf(slave_pid,"Executing login program \"%s\"...\n",prog);
 		}
 
 		/* Redirect I/O to pty slave */
@@ -156,7 +158,7 @@ void runSlave()
 
 
 /*** Send the window size to the pty master and notify the child ***/
-void notifyWinSize()
+void notifyWinSize(void)
 {
 	struct winsize ws;
 
@@ -177,7 +179,7 @@ void notifyWinSize()
 /*** If we didn't do this then the user login would be invisible to the 'who'
      command etc. The entry is removed automatically by the OS when the process
      exits. ***/
-void addUtmpEntry()
+void addUtmpEntry(void)
 {
 	struct utmpx entry;
 
@@ -191,9 +193,9 @@ void addUtmpEntry()
 	if (flags.store_host_in_utmp)
 	{
 		if (dnsaddr)
-			snprintf(entry.ut_host,256,"%s - %s",ipaddr,dnsaddr);
+			snprintf(entry.ut_host,256,"%s - %s",ipaddrstr,dnsaddr);
 		else
-			snprintf(entry.ut_host,256,"%s",ipaddr);
+			snprintf(entry.ut_host,256,"%s",ipaddrstr);
 	}
 
 	time((time_t *)&entry.ut_tv.tv_sec);

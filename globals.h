@@ -38,7 +38,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20240212"
+#define SVR_VERSION "20240519"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -106,6 +106,14 @@ enum
 };
 
 
+enum
+{
+	IP_NO_LIST,
+	IP_WHITELIST,
+	IP_BLACKLIST
+};
+
+
 struct st_flags
 {
 	/* Config file flags */
@@ -118,6 +126,7 @@ struct st_flags
 	unsigned pwd_asterisks      : 1;
 	unsigned dns_lookup         : 1;
 	unsigned store_host_in_utmp : 1;
+	unsigned show_term_resize   : 1;
 	unsigned version            : 1;
 
 	/* Runtime */
@@ -127,8 +136,18 @@ struct st_flags
 	unsigned rx_env   : 1;
 };
 
+
+typedef struct 
+{
+	char *str;
+	uint32_t mask;
+	uint32_t addr;
+	uint32_t maskaddr;
+} st_ip;
+
 /* Config file */
 EXTERN struct sockaddr_in iface_in_addr;
+EXTERN st_ip *iplist;
 EXTERN char *iface;
 EXTERN char *config_file;
 EXTERN char *login_prompt;
@@ -138,6 +157,7 @@ EXTERN char *log_file;
 EXTERN char *pwd_file;
 EXTERN char **banned_users;
 EXTERN char *banned_user_msg;
+EXTERN char *banned_ip_msg;
 EXTERN char **shell_exec_argv;
 EXTERN char **login_exec_argv;
 EXTERN char *login_incorrect_msg;
@@ -153,6 +173,8 @@ EXTERN int banned_users_cnt;
 EXTERN int telopt_timeout_secs;
 EXTERN int log_file_max_fails;
 EXTERN int port;
+EXTERN int iplist_cnt;
+EXTERN int iplist_type;
 
 /* General */
 EXTERN struct st_flags flags;
@@ -161,7 +183,7 @@ EXTERN char username[BUFFSIZE+1];
 EXTERN u_char buff[BUFFSIZE+1];
 EXTERN u_char line[BUFFSIZE+1];
 EXTERN char ptybuff[BUFFSIZE+1];
-EXTERN char ipaddr[20];
+EXTERN char ipaddrstr[20];
 EXTERN char *dnsaddr;
 EXTERN int buffpos;
 EXTERN int sock;
@@ -185,28 +207,28 @@ EXTERN char prev_c;
 EXTERN char *telopt_username;
 
 /* config.c */
-void parseConfigFile();
+void parseConfigFile(void);
 
 /* master_child.c */
 void runMaster(struct sockaddr_in *ip_addr);
 void setUserNameAndPwdState(char *uname);
 int  loginAllowed(char *uname);
-void checkLoginAttempts();
-void storeWinSize();
+void checkLoginAttempts(void);
+void storeWinSize(void);
 void masterExit(int code);
 
 /* slave_child.c */
-void runSlave();
-void notifyWinSize();
+void runSlave(void);
+void notifyWinSize(void);
 
 /* pty.c */
-int  openPTYMaster();
-int  openPTYSlave();
-char *getPTYName();
+int  openPTYMaster(void);
+int  openPTYSlave(void);
+char *getPTYName(void);
 
 /* network.c */
-void createListenSocket();
-void readSock();
+void createListenSocket(void);
+void readSock(void);
 void writeSock(u_char *data, int len);
 
 /* validate.c */
@@ -217,7 +239,7 @@ void sockprintf(char *fmt, ...);
 void logprintf(pid_t pid, char *fmt, ...);
 
 /* telopt.c */
-void sendInitialTelopt();
+void sendInitialTelopt(void);
 u_char *parseTelopt(u_char *p, u_char *end);
 
 /* split.c */
@@ -225,6 +247,11 @@ char *splitString(char *str, char *end, char ***words, int *word_cnt);
 void  addWordToArray(char ***words, char *word, char *end, int *word_cnt);
 void  freeWordArray(char **words, int word_cnt);
 char *splitPwdLine(char *line, char *map_end, char **field);
+
+/* iplist.c */
+st_ip parseIP(char *addr);
+void  addToIPList(st_ip ip);
+int   authorisedIP(struct sockaddr_in *ip_addr);
 
 /* misc.c */
 void setState(int st);

@@ -18,7 +18,7 @@ u_char *findSubOptEnd(u_char *p, u_char *end);
 
 /*** Send request for client to enter char mode, not to echo , to send
      terminal type, terminal/window size and X display string ***/
-void sendInitialTelopt()
+void sendInitialTelopt(void)
 {
 	static u_char mesg[15] = 
 	{
@@ -265,8 +265,13 @@ u_char *getTermSize(u_char *p, u_char *end)
 	term_width = (w1 << 8) + w2;
 	term_height = (h1 << 8) + h2;
 
-	logprintf(master_pid,"TELOPT: Terminal size = %d,%d\n",
-		term_width,term_height);
+	/* Could be a ton of these which could create a huge amount of log 
+	   so there's an enabling flag */
+	if (flags.show_term_resize)
+	{
+		logprintf(master_pid,"TELOPT: Terminal size = %d,%d\n",
+			term_width,term_height);
+	}
 
 	/* Have to do this to keep shell updated as client will send NAWS
 	   when the xterm is resized */

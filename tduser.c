@@ -21,7 +21,7 @@
 
 #include "build_date.h"
 
-#define VERSION       "20240212"
+#define VERSION       "20240515"
 #define FILENAME      "telnetd.pwd"
 #define MIN_USER_LEN  2
 #define MAX_USER_LEN  32 /* Seems to be a general unix limit */
@@ -74,17 +74,17 @@ char *map_start;
 char *map_end;
 int kbraw;
 
-void  init();
+void  init(void);
 void  parseConfigFile(int argc, char **argv);
-void  version();
-void  listSupported();
+void  version(void);
+void  listSupported(void);
 char *getString(int pwd);
-void  getUsername();
-void  getPassword();
-void  checkValidUsername();
-void  mapFile();
-void  checkNewUser();
-void  writeEntry();
+void  getUsername(void);
+void  getPassword(void);
+void  checkValidUsername(void);
+void  mapFile(void);
+void  checkNewUser(void);
+void  writeEntry(void);
 void  sigHandler(int sig);
 
 
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 
 
 
-void init()
+void init(void)
 {
 	signal(SIGINT,sigHandler);
 	signal(SIGQUIT,sigHandler);
@@ -206,7 +206,7 @@ void parseConfigFile(int argc, char **argv)
 
 
 
-void version()
+void version(void)
 {
 	puts("\n*** TDUSER ***\n");
 	printf("Version   : %s\n",VERSION);
@@ -247,7 +247,7 @@ void listSupported()
 
 
 
-void rawMode()
+void rawMode(void)
 {
 	struct termios tio;
 
@@ -276,7 +276,7 @@ void rawMode()
 
 
 
-void cookedMode()
+void cookedMode(void)
 {
 	if (kbraw)
 	{
@@ -352,7 +352,7 @@ char *getString(int pwd)
 
 
 
-void getUsername()
+void getUsername(void)
 {
 	username = strdup(getString(0));
 }
@@ -360,7 +360,7 @@ void getUsername()
 
 
 
-void getPassword()
+void getPassword(void)
 {
 	password = strdup(getString(1));
 }
@@ -371,7 +371,7 @@ void getPassword()
 /*** Trying to follow the standard rules for unix passwords. Ie start with
      a letter and the rest can only be letters, digits or the allowed 
      punctuation ***/
-void checkValidUsername()
+void checkValidUsername(void)
 {
 	char *n = username;
 	int len = strlen(n);
@@ -416,7 +416,7 @@ void checkValidUsername()
 
 
 /*** Simpler to search a file by pointer than reading in char by char ***/
-void mapFile()
+void mapFile(void)
 {
 	int fd;
 
@@ -447,7 +447,7 @@ void mapFile()
 
 /*** If the user is already in the file exit.
      Line format: <username>:<encrypted password> ***/
-void checkNewUser()
+void checkNewUser(void)
 {
 	char *ptr;
 	char *colon;
@@ -492,7 +492,7 @@ void checkNewUser()
 
 
 /*** Write the entry to the password file ***/
-void writeEntry()
+void writeEntry(void)
 {
 	FILE *fp;
 	char *salt;

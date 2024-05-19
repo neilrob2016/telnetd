@@ -5,11 +5,11 @@
 
 void hexdump(u_char *start, u_char *end, int rx);
 void processChar(u_char c);
-void processLine();
+void processLine(void);
 
 
 /*** Create the socket to initially connect to ***/
-void createListenSocket()
+void createListenSocket(void)
 {
 	struct sockaddr_in bind_addr;
 	int on;
@@ -64,7 +64,7 @@ void createListenSocket()
 
 
 /*** Read from the socket and call processChar() function ***/
-void readSock()
+void readSock(void)
 {
 	int len;
 	u_char *p1;
@@ -251,7 +251,7 @@ void processChar(u_char c)
 
 
 /*** Do something with the line in the buffer ***/
-void processLine()
+void processLine(void)
 {
 	line[line_buffpos] = 0;
 	line_buffpos = 0;

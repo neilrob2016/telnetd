@@ -92,3 +92,10 @@ Sept 2021
 - Other minor code improvements and bug fixes.
 - Minor update to tduser.c to prevent gcc warning.
 - Updated Makefile.
+
+
+20240519
+========
+- Added "ip_whitelist", "ip_blacklist" and "show_term_resize" config fields.
+- Updated code to prevent warnings in new versions of Clang.
+- Fixed setgid() bug

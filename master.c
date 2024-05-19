@@ -11,11 +11,11 @@ char **user_list;
 int unique_cnt;
 time_t telneg_start;
 
-void sendMOTD();
+void sendMOTD(void);
 int  getUserCount(int unique);
 void addUserToUniqueList(char *username);
-void processStateTelopt();
-void readPTYMaster();
+void processStateTelopt(void);
+void readPTYMaster(void);
 void masterSigHandler(int sig);
 
 
@@ -39,8 +39,6 @@ void runMaster(struct sockaddr_in *ip_addr)
 	slave_pid = -1;
 	dnsaddr = NULL;
 
-	logprintf(master_pid,"STARTED: Master process, ppid = %d\n",parent_pid);
-
 	/* A host lookup can block for a while so we do it in this process 
 	   instead of in the main loop in the parent process */
 	if (flags.dns_lookup && (host = gethostbyaddr(
@@ -50,9 +48,8 @@ void runMaster(struct sockaddr_in *ip_addr)
 		dnsaddr = strdup(host->h_name);
 	}
 
-	strcpy(ipaddr,inet_ntoa(ip_addr->sin_addr));
-	logprintf(master_pid,"CONNECTION: Socket = %d, address = %s (%s)\n",
-		sock,ipaddr,dnsaddr ? dnsaddr : "<not set>");
+	logprintf(master_pid,"STARTED: Master process, ppid = %d, DNS name = %s\n",
+		parent_pid,dnsaddr ? dnsaddr : "<not set>");
 
 	setState(STATE_TELOPT);
 
@@ -148,7 +145,7 @@ void runMaster(struct sockaddr_in *ip_addr)
 
 
 /*** Send the message of the day file translating any codes as we go ***/
-void sendMOTD()
+void sendMOTD(void)
 {
 	FILE *fp;
 	struct tm *tms;
@@ -322,7 +319,7 @@ void addUserToUniqueList(char *username)
 
 /*** Telnet negotiations have finished or failed so do some actions before
      switching to a new state */
-void processStateTelopt()
+void processStateTelopt(void)
 {
 	if (telopt_username)
 	{
@@ -391,7 +388,7 @@ int loginAllowed(char *uname)
 
 
 
-void checkLoginAttempts()
+void checkLoginAttempts(void)
 {
 	if (++attempts >= login_max_attempts)
 	{
@@ -405,7 +402,7 @@ void checkLoginAttempts()
 
 
 /*** Read from the pty master ***/
-void readPTYMaster()
+void readPTYMaster(void)
 {
 	int len;
 

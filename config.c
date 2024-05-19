@@ -20,10 +20,11 @@
 	P = strdup(value);
 
 
-void processConfigParam(char *param, char *value, int linenum);
+void processConfigParam(char **words, int word_cnt, int linenum);
 void parseBannedUsers(char *list);
 void parseInterface(char *addr);
-void printParams();
+void parseIPList(char **words, int word_cnt);
+void printParams(void);
 
 
 /*** If the config file is bad parseConfigFile() or processConfigParam() will 
@@ -32,7 +33,7 @@ void printParams();
      config variables. logprintf(0,... because only the parent process runs
      the following functions and we don't want the preamble printed in the
      boot up messages or when reparsing the config. */
-void parseConfigFile()
+void parseConfigFile(void)
 {
 	struct stat fs;
 	char *map_start;
@@ -118,14 +119,9 @@ void parseConfigFile()
 				parentExit(-1);
 			case 0:
 				break;
-			case 2:
-				processConfigParam(words[0],words[1],linenum);
-				break;
 			default:
-				logprintf(0,"ERROR: Too %s arguments for field \"%s\" on line %d.\n",
-					word_cnt > 2 ? "many" : "few",
-					words[0],linenum);
-				parentExit(-1);
+				processConfigParam(words,word_cnt,linenum);
+				break;
 			}
 			freeWordArray(words,word_cnt);
 		}
@@ -179,7 +175,7 @@ void parseConfigFile()
 
 
 
-void processConfigParam(char *param, char *value, int linenum)
+void processConfigParam(char **words, int word_cnt, int linenum)
 {
 	const char *params[] =
 	{
@@ -191,6 +187,7 @@ void processConfigParam(char *param, char *value, int linenum)
 		"pwd_asterisks",
 		"dns_lookup",
 		"store_host_in_utmp",
+		"show_term_resize",
 
 		/* Numeric values */
 		"port",
@@ -218,6 +215,10 @@ void processConfigParam(char *param, char *value, int linenum)
 		"log_file",
 		"log_file_rm",
 		"pwd_file",
+
+		"ip_whitelist",
+		"ip_blacklist",
+		"banned_ip_msg"
 	};
 	enum
 	{
@@ -229,6 +230,7 @@ void processConfigParam(char *param, char *value, int linenum)
 		FIELD_PWD_ASTERISKS,
 		FIELD_DNS_LOOKUP,
 		FIELD_STORE_HOST_IN_UTMP,
+		FIELD_SHOW_TERM_RESIZE,
 
 		/* Numeric */
 		FIELD_PORT,
@@ -257,14 +259,20 @@ void processConfigParam(char *param, char *value, int linenum)
 		FIELD_LOG_FILE_RM,
 		FIELD_PWD_FILE,
 
+		FIELD_IP_WHITELIST,
+		FIELD_IP_BLACKLIST,
+		FIELD_IP_BANNED_MSG,
+
 		NUM_PARAMS
 	};
+	char *param = words[0];
+	char *value = words[1];
+	char *ptr;
+	char *tmp;
 	int is_num;
 	int ivalue;
 	int yes;
 	int i;
-	char *ptr;
-	char *tmp;
 
 	logprintf(0,"    Line %-2d: \"%s\": ",linenum,param);
 
@@ -280,6 +288,20 @@ void processConfigParam(char *param, char *value, int linenum)
 	for(i=0;i < NUM_PARAMS;++i)
 	{
 		if (strcmp(param,params[i])) continue;
+
+		switch(i)
+		{
+		case FIELD_IP_WHITELIST:
+		case FIELD_IP_BLACKLIST:
+			break;
+		default:
+			if (word_cnt > 2)
+			{
+				logprintf(0,"ERROR: Too many arguments (%d) for field.\n",word_cnt);
+				parentExit(-1);
+			}
+		}
+
 		if (is_num) yes = -1;
 		else if (!strcasecmp(value,"YES") || !strcasecmp(value,"TRUE"))
 			yes = 1;
@@ -324,6 +346,11 @@ void processConfigParam(char *param, char *value, int linenum)
 		case FIELD_STORE_HOST_IN_UTMP:
 			if (yes == -1) goto VAL_ERROR;
 			flags.store_host_in_utmp = yes;
+			break;
+
+		case FIELD_SHOW_TERM_RESIZE:
+			if (yes == -1) goto VAL_ERROR;
+			flags.show_term_resize = yes;
 			break;
 
 		/* Numeric values */
@@ -454,6 +481,40 @@ void processConfigParam(char *param, char *value, int linenum)
 			parsePath(&pwd_file);
 			break;
 
+		case FIELD_IP_WHITELIST:
+			switch(iplist_type)
+			{
+			case IP_NO_LIST:
+				break;
+			case IP_WHITELIST:
+				goto ALREADY_SET_ERROR;
+			case IP_BLACKLIST:
+				goto IPLIST_ERROR;
+			}
+			iplist_type = IP_WHITELIST;
+			/* Fall through */
+
+		case FIELD_IP_BLACKLIST:
+			if (i == FIELD_IP_BLACKLIST)
+			{
+				switch(iplist_type)
+				{
+				case IP_NO_LIST:
+					break;
+				case IP_WHITELIST:
+					goto IPLIST_ERROR;
+				case IP_BLACKLIST:
+					goto ALREADY_SET_ERROR;
+				}
+				iplist_type = IP_BLACKLIST;
+			}
+			parseIPList(words,word_cnt);
+			break;
+
+		case FIELD_IP_BANNED_MSG:
+			SET_STR_FIELD(banned_ip_msg);
+			break;
+
 		default:
 			assert(0);
 		}
@@ -472,6 +533,10 @@ void processConfigParam(char *param, char *value, int linenum)
 
 	ALREADY_SET_ERROR:
 	logprintf(0,"ERROR: Field already set.\n");
+	parentExit(-1);
+
+	IPLIST_ERROR:
+	logprintf(0,"ERROR: The whitelist and blacklist fields are mutually exclusive.\n");
 	parentExit(-1);
 
 	IGNORE_WARNING:
@@ -544,11 +609,21 @@ void parseInterface(char *addr)
 
 
 
+
+void parseIPList(char **words, int word_cnt)
+{
+	int i;
+	for(i=1;i < word_cnt;++i) addToIPList(parseIP(words[i]));
+}
+
+
+
+
 #define NOTSET    "<not set>\n"
 #define PRTSTR(S) (S ? S : "<not set>")
 #define YESNO(F)  (F ? "YES" : "NO")
 
-void printParams()
+void printParams(void)
 {
 	int i;
 
@@ -614,6 +689,7 @@ void printParams()
 		logprintf(0,NOTSET);
 	logprintf(0,"    Password asterisks    : %s\n",YESNO(flags.pwd_asterisks));
 	logprintf(0,"    Store host in utmp    : %s\n",YESNO(flags.store_host_in_utmp));
+	logprintf(0,"    Show terminal resize  : %s\n",YESNO(flags.show_term_resize));
 	logprintf(0,"    Login incorrect msg   : \"%s\"\n",login_incorrect_msg);
 	logprintf(0,"    Login server error msg: \"%s\"\n",login_svrerr_msg);
 	logprintf(0,"    Login max attempts msg: \"%s\"\n",login_max_attempts_msg);
@@ -626,12 +702,30 @@ void printParams()
 	{
 		for(i=0;i < banned_users_cnt;++i)
 		{
-			if (i) logprintf(0,",");
+			if (i) logprintf(0,", ");
 			logprintf(0,"%s",banned_users[i]);
 		}
 		logprintf(0,"\n");
 	}
 	else logprintf(0,"<none>\n");
 	logprintf(0,"    Banned user message   : \"%s\"\n",banned_user_msg);
+	logprintf(0,"    Banned IPs (%slist): ",
+		iplist_type == IP_BLACKLIST ? "black" : "white");
+	if (iplist_cnt)
+	{
+		for(i=0;i < iplist_cnt;++i)
+		{
+			if (i) logprintf(0,", ");
+			logprintf(0,"%s",iplist[i].str);
+		}
+		logprintf(0,"\n");
+	}
+	else logprintf(0,"<none>\n");
+
+	logprintf(0,"    Banned IP message     : ");
+	if (banned_ip_msg)
+		logprintf(0,"\"%s\"\n",banned_ip_msg);
+	else
+		logprintf(0,NOTSET);
 	logprintf(0,"\n");
 }

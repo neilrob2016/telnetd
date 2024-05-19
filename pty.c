@@ -4,7 +4,7 @@
 /*** Open and set up the pty master. This is the network side of the PTY so
      data read from the socket get written to this and data from this gets
      sent down the socket. ***/
-int openPTYMaster()
+int openPTYMaster(void)
 {
 	if ((ptym = posix_openpt(O_RDWR | O_NOCTTY)) == -1)
 	{
@@ -39,7 +39,7 @@ int openPTYMaster()
 
 /*** Open the PTY slave which is the other end of the PTY pipe and is the
      controlling terminal of login/shell which read and write to this. ***/
-int openPTYSlave()
+int openPTYSlave(void)
 {
 	if ((ptys = open((char *)ptsname(ptym),O_RDWR)) == -1)
 	{
@@ -54,7 +54,7 @@ int openPTYSlave()
 
 
 
-char *getPTYName()
+char *getPTYName(void)
 {
 	char *ptr;
 

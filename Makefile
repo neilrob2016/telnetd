@@ -21,6 +21,7 @@ OBJS= \
 	printf.o \
 	pty.o \
 	split.o \
+	iplist.o \
 	misc.o
 BIN=telnetd
 BIN2=tduser
@@ -57,6 +58,9 @@ pty.o: pty.c globals.h
 
 split.o: split.c globals.h
 	$(CC) $(ARGS) -c split.c
+
+iplist.o: iplist.c globals.h
+	$(CC) $(ARGS) -c iplist.c
 
 misc.o: misc.c globals.h
 	$(CC) $(ARGS) -c misc.c
