@@ -8,7 +8,7 @@
 
 extern char **environ;
 
-void addUtmpEntry(void);
+static void addUtmpEntry(void);
 
 
 /*** Fork off slave child process that will run bash/login ***/

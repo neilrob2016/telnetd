@@ -12,7 +12,7 @@
 #define SET_STR_FIELD(P) \
 	if (P) \
 	{ \
-		if (flags.sighup) \
+		if (flags.rx_sighup) \
 			free(P); \
 		else \
 			goto ALREADY_SET_ERROR; \
@@ -20,11 +20,11 @@
 	P = strdup(value);
 
 
-void processConfigParam(char **words, int word_cnt, int linenum);
-void parseBannedUsers(char *list);
-void parseInterface(char *addr);
-void parseIPList(char **words, int word_cnt);
-void printParams(void);
+static void processConfigParam(char **words, int word_cnt, int linenum);
+static void parseBannedUsers(char *list);
+static void parseInterface(char *addr);
+static void parseIPList(char **words, int word_cnt);
+static void printParams(void);
 
 
 /*** If the config file is bad parseConfigFile() or processConfigParam() will 
@@ -75,7 +75,7 @@ void parseConfigFile(void)
 	seek_nl = 0;
 
 	/* Free the arrays */
-	if (flags.sighup)
+	if (flags.rx_sighup)
 	{
 		if (shell_exec_argv)
 		{
@@ -177,93 +177,111 @@ void parseConfigFile(void)
 
 void processConfigParam(char **words, int word_cnt, int linenum)
 {
-	const char *params[] =
-	{
-		/* Flags */
-		"be_daemon",
-		"hexdump",
-		"login_append_user",
-		"login_preserve_env",
-		"pwd_asterisks",
-		"dns_lookup",
-		"store_host_in_utmp",
-		"show_term_resize",
-
-		/* Numeric values */
-		"port",
-		"telopt_timeout_secs",
-		"log_file_max_fails",
-		"login_max_attempts",
-		"login_timeout_secs",
-		"login_pause_secs",
-
-		/* String values */
-		"network_interface",
-		"login_program",
-		"login_prompt",
-		"login_incorrect_msg",
-		"login_max_attempts_msg",
-
-		"login_svrerr_msg",
-		"login_timeout_msg",
-		"pwd_prompt",
-		"shell_program",
-		"banned_users",
-
-		"banned_user_msg",
-		"motd_file",
-		"log_file",
-		"log_file_rm",
-		"pwd_file",
-
-		"ip_whitelist",
-		"ip_blacklist",
-		"banned_ip_msg"
-	};
 	enum
 	{
-		/* Flags */
+		/* 0 Flags */
 		FIELD_BE_DAEMON,
 		FIELD_HEXDUMP,
 		FIELD_LOGIN_APPEND_USER,
 		FIELD_LOGIN_PRESERVE_ENV,
 		FIELD_PWD_ASTERISKS,
+
+		/* 5 */
 		FIELD_DNS_LOOKUP,
 		FIELD_STORE_HOST_IN_UTMP,
 		FIELD_SHOW_TERM_RESIZE,
+		FIELD_IGNORE_SIGHUP,
 
 		/* Numeric */
 		FIELD_PORT,
+		/* 10 */
 		FIELD_TELOPT_TIMEOUT_SECS,
 		FIELD_LOG_FILE_MAX_FAILS,
 		FIELD_LOGIN_MAX_ATTEMPTS,
 		FIELD_LOGIN_TIMEOUT_SECS,
 		FIELD_LOGIN_PAUSE_SECS,
 
-		/* Strings */
+		/* 15 Strings */
 		FIELD_NETWORK_INTERFACE,
 		FIELD_LOGIN_PROGRAM,
 		FIELD_LOGIN_PROMPT,
 		FIELD_LOGIN_INCORRECT_MSG,
 		FIELD_LOGIN_MAX_ATTEMPTS_MSG,
 
+		/* 20 */
 		FIELD_LOGIN_SVRERR_MSG,
 		FIELD_LOGIN_TIMEOUT_MSG,
 		FIELD_PWD_PROMPT,
 		FIELD_SHELL_PROGRAM,
 		FIELD_BANNED_USERS,
 
+		/* 25 */
 		FIELD_BANNED_USER_MSG,
 		FIELD_MOTD_FILE,
+		FIELD_PRE_MOTD_FILE,
+		FIELD_POST_MOTD_FILE,
 		FIELD_LOG_FILE,
+
+		/* 30 */
 		FIELD_LOG_FILE_RM,
 		FIELD_PWD_FILE,
-
 		FIELD_IP_WHITELIST,
 		FIELD_IP_BLACKLIST,
 		FIELD_IP_BANNED_MSG,
 
 		NUM_PARAMS
+	};
+	const char *params[NUM_PARAMS] =
+	{
+		/* 0 Flags */
+		"be_daemon",
+		"hexdump",
+		"login_append_user",
+		"login_preserve_env",
+		"pwd_asterisks",
+
+		/* 5 */
+		"dns_lookup",
+		"store_host_in_utmp",
+		"show_term_resize",
+		"ignore_sighup",
+
+		/* Numeric values */
+		"port",
+		/* 10 */
+		"telopt_timeout_secs",
+		"log_file_max_fails",
+		"login_max_attempts",
+		"login_timeout_secs",
+		"login_pause_secs",
+
+		/* 15 String values */
+		"network_interface",
+		"login_program",
+		"login_prompt",
+		"login_incorrect_msg",
+		"login_max_attempts_msg",
+
+		/* 20 */
+		"login_svrerr_msg",
+		"login_timeout_msg",
+		"pwd_prompt",
+		"shell_program",
+		"banned_users",
+
+		/* 25 */
+		"banned_user_msg",
+		"motd_file",
+		"pre_motd_file",
+		"post_motd_file",
+		"log_file",
+
+		/* 30 */
+		"log_file_rm",
+		"pwd_file",
+		"ip_whitelist",
+		"ip_blacklist",
+		"banned_ip_msg"
 	};
 	char *param = words[0];
 	char *value = words[1];
@@ -313,7 +331,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 		{
 		/* Flags */
 		case FIELD_BE_DAEMON:
-			if (flags.sighup) goto IGNORE_WARNING; /* Too late */
+			if (flags.rx_sighup) goto IGNORE_WARNING; /* Too late */
 			if (yes == -1) goto VAL_ERROR;
 			flags.daemon = yes;
 			break;
@@ -353,11 +371,16 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 			flags.show_term_resize = yes;
 			break;
 
+		case FIELD_IGNORE_SIGHUP:
+			if (yes == -1) goto VAL_ERROR;
+			flags.ignore_sighup = yes;
+			break;
+
 		/* Numeric values */
 		case FIELD_PORT:
 			/* Ignore if SIGHUP as it would mean closing the
 			   current socket and re-creating. Too much hassle. */
-			if (flags.sighup) goto IGNORE_WARNING;
+			if (flags.rx_sighup) goto IGNORE_WARNING;
 			if (!is_num || ivalue < 1 || ivalue > 0xFFFF)
 				goto VAL_ERROR;
 			port = ivalue;
@@ -399,7 +422,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 
 		/* String values */
 		case FIELD_NETWORK_INTERFACE:
-			if (flags.sighup) goto IGNORE_WARNING;
+			if (flags.rx_sighup) goto IGNORE_WARNING;
 			parseInterface(value);
 			break;
 
@@ -446,7 +469,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 			break;
 
 		case FIELD_BANNED_USERS:
-			if (banned_users && !flags.sighup)
+			if (banned_users && !flags.rx_sighup)
 				goto ALREADY_SET_ERROR;
 			parseBannedUsers(value);
 			break;
@@ -456,13 +479,19 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 			break;
 
 		case FIELD_MOTD_FILE:
-			SET_STR_FIELD(motd_file);
-			parsePath(&motd_file);
+		case FIELD_PRE_MOTD_FILE:
+			SET_STR_FIELD(pre_motd_file);
+			parsePath(&pre_motd_file);
 			break;
 
+		case FIELD_POST_MOTD_FILE:
+			SET_STR_FIELD(post_motd_file);
+			parsePath(&post_motd_file);
+			break;
+		
 		case FIELD_LOG_FILE:
 		case FIELD_LOG_FILE_RM:
-			if (flags.sighup) goto IGNORE_WARNING;
+			if (flags.rx_sighup) goto IGNORE_WARNING;
 			if (flags.log_file_override) goto OVERRIDE;
 
 			/* Print OK before setting the log file or at startup 
@@ -556,7 +585,7 @@ void parseBannedUsers(char *list)
 	char *user;
 	int i;
 
-	if (flags.sighup && banned_users)
+	if (flags.rx_sighup && banned_users)
 	{
 		for(i=0;i < banned_users_cnt;++i) free(banned_users[i]);
 		free(banned_users);
@@ -613,7 +642,7 @@ void parseInterface(char *addr)
 void parseIPList(char **words, int word_cnt)
 {
 	int i;
-	for(i=1;i < word_cnt;++i) addToIPList(parseIP(words[i]));
+	for(i=1;i < word_cnt;++i) addToIPList(words[i]);
 }
 
 
@@ -631,7 +660,8 @@ void printParams(void)
 	logprintf(0,"\n    Parameter               Value\n");
 	logprintf(0,"    =========               =====\n");
 	logprintf(0,"    Config file           : %s\n",PRTSTR(config_file));
-	logprintf(0,"    MOTD file             : %s\n",PRTSTR(motd_file));
+	logprintf(0,"    Pre login MOTD file   : %s\n",PRTSTR(pre_motd_file));
+	logprintf(0,"    Post login MOTD file  : %s\n",PRTSTR(post_motd_file));
 	logprintf(0,"    Password file         : %s\n",PRTSTR(pwd_file));
 	logprintf(0,"    Log file              : %s\n",PRTSTR(log_file));
 	logprintf(0,"    Log file max wrt fails: %d\n",log_file_max_fails);
@@ -641,6 +671,7 @@ void printParams(void)
 	logprintf(0,"    Be daemon             : %s\n",YESNO(flags.daemon));
 	logprintf(0,"    Hexdump               : %s\n",YESNO(flags.hexdump));
 	logprintf(0,"    Do DNS lookup         : %s\n",YESNO(flags.dns_lookup));
+	logprintf(0,"    Ignore SIGHUP         : %s\n",YESNO(flags.ignore_sighup));
 	if (!shell_exec_argv)
 		logprintf(0,"    Login append user     : %s\n",YESNO(flags.append_user));
 
@@ -716,7 +747,7 @@ void printParams(void)
 		for(i=0;i < iplist_cnt;++i)
 		{
 			if (i) logprintf(0,", ");
-			logprintf(0,"%s",iplist[i].str);
+			logprintf(0,"%s",iplist[i]);
 		}
 		logprintf(0,"\n");
 	}

@@ -22,6 +22,7 @@ OBJS= \
 	pty.o \
 	split.o \
 	iplist.o \
+	motd.o \
 	misc.o
 BIN=telnetd
 BIN2=tduser
@@ -61,6 +62,9 @@ split.o: split.c globals.h
 
 iplist.o: iplist.c globals.h
 	$(CC) $(ARGS) -c iplist.c
+
+motd.o: motd.c globals.h
+	$(CC) $(ARGS) -c motd.c
 
 misc.o: misc.c globals.h
 	$(CC) $(ARGS) -c misc.c

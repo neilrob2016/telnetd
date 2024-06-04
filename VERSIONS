@@ -99,3 +99,12 @@ Sept 2021
 - Added "ip_whitelist", "ip_blacklist" and "show_term_resize" config fields.
 - Updated code to prevent warnings in new versions of Clang.
 - Fixed setgid() bug
+
+
+20240604
+========
+- Added DNS address functionality to white and black lists.
+- Added post_motd_file and ignore_sighup fields to config file.
+- Moved motd files to motd_files/ directory.
+- Minor code updates.
+

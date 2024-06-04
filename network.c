@@ -3,9 +3,9 @@
 #define HEXDUMP_CHARS 10
 #define DELETE_KEY    127
 
-void hexdump(u_char *start, u_char *end, int rx);
-void processChar(u_char c);
-void processLine(void);
+static void hexdump(u_char *start, u_char *end, int rx);
+static void processChar(u_char c);
+static void processLine(void);
 
 
 /*** Create the socket to initially connect to ***/
@@ -193,9 +193,9 @@ void processChar(u_char c)
 	int print_char;
 
 	/* Telnet passes \r\0 for newlines, ignore the \0 */
-	if (prev_c == '\r' && !c)
+	if (prev_rx_c == '\r' && !c)
 	{
-		prev_c = c;
+		prev_rx_c = c;
 		return;
 	}
 
@@ -206,7 +206,7 @@ void processChar(u_char c)
 	case STATE_PIPE:
 		/* Just write through to pty, no processing. */
 		write(ptym,&c,1);
-		prev_c = c;
+		prev_rx_c = c;
 		return;
 	case STATE_TELOPT:
 		/* Ignore any user input in this state */
@@ -217,7 +217,7 @@ void processChar(u_char c)
 	default:
 		break;
 	}
-	prev_c = c;
+	prev_rx_c = c;
 	print_char = (flags.echo || asterisks);
 
 	/* Deal with the character */
@@ -293,6 +293,7 @@ void processLine(void)
 			break;
 		case 1:
 			logprintf(master_pid,"User \"%s\" validated.\n",username);
+			if (post_motd_file) sendMOTD(post_motd_file);
 			setState(STATE_PIPE);
 			runSlave();
 			break;

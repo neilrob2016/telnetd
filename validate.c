@@ -5,10 +5,10 @@ static struct stat fs;
 static char *map_start;
 static char *map_end;
 
-int validateTelnetdPwd(char *password);
-int mapTelnetdPwdFile(void);
-int parseTelnetdPwdFile(char *password);
-char *findColon(char *ptr);
+static int   validateTelnetdPwd(char *password);
+static int   mapTelnetdPwdFile(void);
+static int   parseTelnetdPwdFile(char *password);
+
 
 /*** Validate the user password. 1 means valid, 0 means invalid, -1 means
      some kind of fatal error ***/

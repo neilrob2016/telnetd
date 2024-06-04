@@ -8,12 +8,12 @@
 
 #define IS_VAR_START(C) (C == NEW_ENV_VAR || C == ENV_USERVAR)
 
-void sendResponse(u_char com, u_char opt);
-void requestSubOption(u_char sb);
-u_char *getTermSize(u_char *p, u_char *end);
-u_char *getTermType(u_char *p, u_char *end);
-u_char *getEnviroment(u_char *p, u_char *end);
-u_char *findSubOptEnd(u_char *p, u_char *end);
+static void    sendResponse(u_char com, u_char opt);
+static void    requestSubOption(u_char sb);
+static u_char *getTermSize(u_char *p, u_char *end);
+static u_char *getTermType(u_char *p, u_char *end);
+static u_char *getEnviroment(u_char *p, u_char *end);
+static u_char *findSubOptEnd(u_char *p, u_char *end);
 
 
 /*** Send request for client to enter char mode, not to echo , to send

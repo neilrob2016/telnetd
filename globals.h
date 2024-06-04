@@ -38,7 +38,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20240519"
+#define SVR_VERSION "20240604"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -127,32 +127,25 @@ struct st_flags
 	unsigned dns_lookup         : 1;
 	unsigned store_host_in_utmp : 1;
 	unsigned show_term_resize   : 1;
+	unsigned ignore_sighup      : 1;
 	unsigned version            : 1;
 
 	/* Runtime */
-	unsigned sighup   : 1;
-	unsigned echo     : 1;
-	unsigned rx_ttype : 1;
-	unsigned rx_env   : 1;
+	unsigned echo      : 1;
+	unsigned rx_sighup : 1;
+	unsigned rx_ttype  : 1;
+	unsigned rx_env    : 1;
 };
 
 
-typedef struct 
-{
-	char *str;
-	uint32_t mask;
-	uint32_t addr;
-	uint32_t maskaddr;
-} st_ip;
-
 /* Config file */
 EXTERN struct sockaddr_in iface_in_addr;
-EXTERN st_ip *iplist;
 EXTERN char *iface;
 EXTERN char *config_file;
 EXTERN char *login_prompt;
 EXTERN char *pwd_prompt;
-EXTERN char *motd_file;
+EXTERN char *pre_motd_file;
+EXTERN char *post_motd_file;
 EXTERN char *log_file;
 EXTERN char *pwd_file;
 EXTERN char **banned_users;
@@ -164,6 +157,7 @@ EXTERN char *login_incorrect_msg;
 EXTERN char *login_max_attempts_msg;
 EXTERN char *login_svrerr_msg;
 EXTERN char *login_timeout_msg;
+EXTERN char **iplist;
 EXTERN int shell_exec_argv_cnt;
 EXTERN int login_exec_argv_cnt;
 EXTERN int login_max_attempts;
@@ -179,32 +173,31 @@ EXTERN int iplist_type;
 /* General */
 EXTERN struct st_flags flags;
 EXTERN pid_t parent_pid;
-EXTERN char username[BUFFSIZE+1];
 EXTERN u_char buff[BUFFSIZE+1];
 EXTERN u_char line[BUFFSIZE+1];
+EXTERN char username[BUFFSIZE+1];
 EXTERN char ptybuff[BUFFSIZE+1];
 EXTERN char ipaddrstr[20];
 EXTERN char *dnsaddr;
-EXTERN int buffpos;
-EXTERN int sock;
+EXTERN int log_file_fail_cnt;
 EXTERN int term_height;
 EXTERN int term_width;
 EXTERN int listen_sock;
-EXTERN int log_file_fail_cnt;
+EXTERN int buffpos;
+EXTERN int sock;
 
 /* Child */
 EXTERN struct passwd *userinfo;
-EXTERN struct passwd god_userinfo;
 EXTERN sigset_t sigmask;
 EXTERN pid_t master_pid;
 EXTERN pid_t slave_pid;
+EXTERN char *telopt_username;
+EXTERN char prev_rx_c;
+EXTERN int line_buffpos;
+EXTERN int attempts;
 EXTERN int state;
 EXTERN int ptym;
 EXTERN int ptys;
-EXTERN int attempts;
-EXTERN int line_buffpos;
-EXTERN char prev_c;
-EXTERN char *telopt_username;
 
 /* config.c */
 void parseConfigFile(void);
@@ -249,9 +242,11 @@ void  freeWordArray(char **words, int word_cnt);
 char *splitPwdLine(char *line, char *map_end, char **field);
 
 /* iplist.c */
-st_ip parseIP(char *addr);
-void  addToIPList(st_ip ip);
-int   authorisedIP(struct sockaddr_in *ip_addr);
+void addToIPList(char *addrstr);
+int  authorisedIP(char *addrstr);
+
+/* motd.c */
+void sendMOTD(char *file);
 
 /* misc.c */
 void setState(int st);

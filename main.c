@@ -13,15 +13,15 @@
 #define CONFIG_FILE "telnetd.cfg"
 
 
-void init(void);
-void parseCmdLine(int argc, char **argv);
-void version(void);
-void beDaemon(void);
-void setUpSignals(void);
-void doChecks(void);
-void mainloop(void);
-void hupHandler(int sig);
-void parentSigHandler(int sig);
+static void init(void);
+static void parseCmdLine(int argc, char **argv);
+static void version(void);
+static void beDaemon(void);
+static void setUpSignals(void);
+static void doChecks(void);
+static void mainloop(void);
+static void hupHandler(int sig);
+static void parentSigHandler(int sig);
 
 
 /*********************************** INIT ***********************************/
@@ -66,7 +66,8 @@ void init(void)
 	login_exec_argv_cnt = 0;
 	log_file_max_fails = LOG_FILE_MAX_FAILS;
 	log_file_fail_cnt = 0;
-	motd_file = NULL;
+	pre_motd_file = NULL;
+	post_motd_file = NULL;
 	log_file = NULL;
 	pwd_file = NULL;
 	iface = NULL;
@@ -315,18 +316,18 @@ void mainloop(void)
 
 		strcpy(ipaddrstr,inet_ntoa(ip_addr.sin_addr));
 
-		/* See if in white/black list. Do this before we waste cycles
+		logprintf(parent_pid,"CONNECTION: Socket = %d, IP = %s\n",
+			sock,ipaddrstr);
+
+		/* See if IP in white/black list. Do this before we waste cycles
 		   doing a fork  */
-		if (!authorisedIP(&ip_addr))
+		if (!authorisedIP(ipaddrstr))
 		{
-			logprintf(parent_pid,"CONNECTION REFUSED: Socket = %d, IP = %s (BANNED)\n",
-				sock,ipaddrstr);
+			logprintf(parent_pid,"CONNECTION REFUSED: Banned IP address.\n");
 			if (banned_ip_msg) sockprintf("%s\r\n",banned_ip_msg);
 			close(sock);
 			continue;
 		}
-		logprintf(parent_pid,"CONNECTION: Socket = %d, IP = %s\n",
-			sock,ipaddrstr);
 
 		if (setsockopt(
 			sock,
@@ -363,10 +364,16 @@ void mainloop(void)
 
 void hupHandler(int sig)
 {
+	if (flags.ignore_sighup)
+	{
+		logprintf(parent_pid,"SIGNAL %d (%s): Ignoring.\n",
+			sig,strsignal(sig));
+		return;
+	}
 	logprintf(parent_pid,"SIGNAL %d (%s): Re-reading config...\n",
 		sig,strsignal(sig));
 	bzero(&flags,sizeof(flags));
-	flags.sighup = 1;
+	flags.rx_sighup = 1;
 	parseConfigFile();
 }
 
