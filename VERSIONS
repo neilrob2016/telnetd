@@ -108,3 +108,7 @@ Sept 2021
 - Moved motd files to motd_files/ directory.
 - Minor code updates.
 
+
+20240620
+========
+- A full restart is now done when receiving a SIGHUP

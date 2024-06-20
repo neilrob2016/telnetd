@@ -12,38 +12,58 @@
 
 #define CONFIG_FILE "telnetd.cfg"
 
-
-static void init(void);
+static void init(int restart);
+static void clear(void);
 static void parseCmdLine(int argc, char **argv);
 static void version(void);
 static void beDaemon(void);
-static void setUpSignals(void);
+static void setSignals(void);
 static void doChecks(void);
 static void mainloop(void);
-static void hupHandler(int sig);
-static void parentSigHandler(int sig);
+static void sigHUPHandler(int sig, siginfo_t *siginfo, void *pcontext);
+static void sigExitHandler(int sig, siginfo_t *siginfo, void *pcontext);
 
 
 /*********************************** INIT ***********************************/
 
 int main(int argc, char **argv)
 {
-	init();
-	parseCmdLine(argc,argv);
-	version();
-	parseConfigFile();
-	doChecks();
-	createListenSocket();
-	if (flags.daemon) beDaemon();
-	setUpSignals();
-	mainloop();
+	int first = 1;
+
+	while(1)
+	{
+		init(first);
+		parseCmdLine(argc,argv);
+		version();
+		parseConfigFile();
+		doChecks();
+		createListenSocket();
+		if (flags.daemon_tmp)
+		{
+			beDaemon();
+			/* Set this late so logprintf() works during boot */
+			flags.daemon = 1;
+		}
+		setSignals();
+
+		/* mainloop() will only ever exit on a SIGHUP which means do a
+		   restart and re-read the config file */
+		mainloop();
+		clear();
+		logprintf(master_pid,"*** RESTART ***");
+		first = 0;
+	}
 	return 0;
 }
 
 
 
-void init(void)
+void init(int first)
 {
+	/* Don't clear the log file if we're restarting or the messages will
+	   disappear into a black hole if we're running as a daemon */
+	if (first) log_file = NULL;
+	pwd_file = NULL;
 	config_file = CONFIG_FILE;
 	port = PORT;
 	login_prompt = NULL;
@@ -68,10 +88,9 @@ void init(void)
 	log_file_fail_cnt = 0;
 	pre_motd_file = NULL;
 	post_motd_file = NULL;
-	log_file = NULL;
-	pwd_file = NULL;
 	iface = NULL;
 	iface_in_addr.sin_addr.s_addr = INADDR_ANY;
+	listen_sock = 0;
 	state = STATE_NOTSET;
 	parent_pid = getpid();
 	username[0] = 0;
@@ -80,6 +99,42 @@ void init(void)
 	iplist_type = IP_NO_LIST;
 
 	bzero(&flags,sizeof(flags));
+}
+
+
+
+
+void clear(void)
+{
+	int i;
+
+	close(listen_sock);
+	FREE(login_prompt);
+	FREE(pwd_prompt);
+	FREE(login_incorrect_msg);
+	FREE(login_max_attempts_msg);
+	FREE(login_svrerr_msg);
+	FREE(login_timeout_msg);
+	FREE(banned_user_msg);
+	FREE(banned_ip_msg);
+	FREE(pre_motd_file);
+	FREE(post_motd_file);
+
+	/* Only clear password file, not log file otherwise logging will
+	   suddenly stop */
+	FREE(pwd_file);
+
+	for(i=0;i < shell_exec_argv_cnt;++i) free(shell_exec_argv[i]);
+	FREE(shell_exec_argv);
+
+	for(i=0;i < login_exec_argv_cnt;++i) free(login_exec_argv[i]);
+	FREE(login_exec_argv);
+
+	for(i=0;i < banned_users_cnt;++i) free(banned_users[i]);
+	FREE(banned_users);
+
+	for(i=0;i < iplist_cnt;++i) free(iplist[i]);
+	FREE(iplist);
 }
 
 
@@ -232,7 +287,7 @@ void beDaemon(void)
 	   remains the same */
 	if (getppid() == 1) return;
 
-	logprintf(0,"Becoming background daemon...\n");
+	logprintf(0,">>> Becoming background daemon...\n");
 
 	switch(fork())
 	{
@@ -264,25 +319,36 @@ void beDaemon(void)
 
 
 
-void setUpSignals(void)
+void setSignals(void)
 {
+	struct sigaction sa;
+	sigset_t sigmask;
+
 	/* Not going to bother to reap in the parent process */
 	signal(SIGCHLD,SIG_IGN);
-
-	/* SIGHUP causes a re-read of the config file */
-	signal(SIGHUP,hupHandler);
-
-	/* Block SIGUSR1 so we can sigwait() on it. Set others to point at
+        
+ 	/* Block SIGUSR1 so we can sigwait() on it. Set others to point at 
 	   handler */
-	sigemptyset(&sigmask);
-	sigaddset(&sigmask,SIGUSR1);
-	sigprocmask(SIG_BLOCK,&sigmask,NULL);
+	sigemptyset(&usr1_sigmask);
+	sigaddset(&usr1_sigmask,SIGUSR1);
+	sigprocmask(SIG_BLOCK,&usr1_sigmask,NULL);
 
-	/* Exit handler */
-	signal(SIGINT,parentSigHandler);
-	signal(SIGQUIT,parentSigHandler);
-	signal(SIGTERM,parentSigHandler);
-}
+	/* SIGHUP causes a restart. Using sigaction() instead of signal()
+	   because signal() sets SA_RESTART meaning the accept() call won't 
+	   exit when this signal is received. We want it to exit. */
+	sigemptyset(&sigmask);
+	bzero(&sa,sizeof(sa));
+	sa.sa_mask = sigmask;
+	sa.sa_flags = SA_SIGINFO;
+	sa.sa_sigaction = sigHUPHandler;
+	sigaction(SIGHUP,&sa,NULL);
+
+	/* Exit handlers */
+	sa.sa_sigaction = sigExitHandler;
+	sigaction(SIGINT,&sa,NULL);
+	sigaction(SIGQUIT,&sa,NULL);
+	sigaction(SIGTERM,&sa,NULL);
+}       
 
 
 
@@ -292,8 +358,8 @@ void setUpSignals(void)
 /*** Does what it says on the tin ***/
 void mainloop(void)
 {
-	struct linger lin;
 	struct sockaddr_in ip_addr;
+	struct linger lin;
 	socklen_t size;
 
 	logprintf(parent_pid,"STARTED: Parent process.\n");
@@ -308,6 +374,12 @@ void mainloop(void)
 		if ((sock = accept(
 			listen_sock,(struct sockaddr *)&ip_addr,&size)) == -1)
 		{
+			if (errno == EINTR)
+			{
+				if (flags.rx_sighup) return;
+				if (flags.ignore_sighup) continue;
+			}
+
 			/* This is fairly terminal , just die */
 			logprintf(parent_pid,"ERROR: mainloop(): accept(): %s\n",
 				strerror(errno));
@@ -337,9 +409,6 @@ void mainloop(void)
 				strerror(errno));
 		}
 
-		/* Don't want children inheriting this handler */
-		signal(SIGHUP,SIG_IGN);
-
 		switch(fork())
 		{
 		case -1:
@@ -347,12 +416,11 @@ void mainloop(void)
 				strerror(errno));
 			break;
 		case 0:
+			signal(SIGHUP,SIG_IGN);
 			close(listen_sock);
 			runMaster(&ip_addr);
 			break;
 		default:
-			/* Reinstate handler for parent */
-			signal(SIGHUP,hupHandler);
 			break;
 		}
 		close(sock);
@@ -362,27 +430,26 @@ void mainloop(void)
 
 
 
-void hupHandler(int sig)
+void sigHUPHandler(int sig, siginfo_t *siginfo, void *pcontext)
 {
 	if (flags.ignore_sighup)
 	{
-		logprintf(parent_pid,"SIGNAL %d (%s): Ignoring.\n",
-			sig,strsignal(sig));
+		logprintf(parent_pid,"SIGNAL %d (%s) from pid %d: Ignoring.\n",
+			sig,strsignal(sig),siginfo->si_pid);
 		return;
 	}
-	logprintf(parent_pid,"SIGNAL %d (%s): Re-reading config...\n",
-		sig,strsignal(sig));
-	bzero(&flags,sizeof(flags));
+	logprintf(parent_pid,"SIGNAL %d (%s) from pid %d: Restarting...\n",
+		sig,strsignal(sig),siginfo->si_pid);
 	flags.rx_sighup = 1;
-	parseConfigFile();
 }
 
 
 
 
-void parentSigHandler(int sig)
+void sigExitHandler(int sig, siginfo_t *siginfo, void *pcontext)
 {
-	logprintf(parent_pid,"SIGNAL %d (%s): Exiting...\n",sig,strsignal(sig));
+	logprintf(parent_pid,"SIGNAL %d (%s) from pid %d: Exiting...\n",
+		sig,strsignal(sig),siginfo->si_pid);
 	close(listen_sock);
 	parentExit(sig);
 }

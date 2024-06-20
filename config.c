@@ -333,7 +333,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 		case FIELD_BE_DAEMON:
 			if (flags.rx_sighup) goto IGNORE_WARNING; /* Too late */
 			if (yes == -1) goto VAL_ERROR;
-			flags.daemon = yes;
+			flags.daemon_tmp = yes;
 			break;
 
 		case FIELD_HEXDUMP:
@@ -501,6 +501,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 			tmp = strdup(value);
 			parsePath(&tmp);
 			logprintf(0,">>> Redirecting output to \"%s\"...\n",tmp);
+			FREE(log_file);
 			log_file = tmp;
 			if (i == FIELD_LOG_FILE_RM) unlink(log_file);
 			return;
@@ -668,7 +669,7 @@ void printParams(void)
 	logprintf(0,"    Network interface     : %s\n",PRTSTR(iface));
 	logprintf(0,"    Port                  : %d\n",port);
 	logprintf(0,"    Telopt timeout        : %d secs\n",telopt_timeout_secs);
-	logprintf(0,"    Be daemon             : %s\n",YESNO(flags.daemon));
+	logprintf(0,"    Be daemon             : %s\n",YESNO(flags.daemon_tmp));
 	logprintf(0,"    Hexdump               : %s\n",YESNO(flags.hexdump));
 	logprintf(0,"    Do DNS lookup         : %s\n",YESNO(flags.dns_lookup));
 	logprintf(0,"    Ignore SIGHUP         : %s\n",YESNO(flags.ignore_sighup));

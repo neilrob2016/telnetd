@@ -1,0 +1,2 @@
+- Allow more than one network interface to be specified in config
+- further fields in telnetd.pwd when required

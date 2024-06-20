@@ -38,7 +38,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20240604"
+#define SVR_VERSION "20240620"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -47,6 +47,8 @@
 #define LOGIN_MAX_ATTEMPTS  3
 #define TELOPT_TIMEOUT_SECS 2
 #define LOG_FILE_MAX_FAILS  2
+
+#define FREE(M) if (M) free(M)
 
 #ifdef __APPLE__
 #define LOGIN_PROG "/usr/bin/login"
@@ -95,7 +97,6 @@ enum
 	NUM_STATES
 };
 
-
 enum
 {
 	PWD_USER,
@@ -104,7 +105,6 @@ enum
 
 	NUM_PWD_FIELDS
 };
-
 
 enum
 {
@@ -118,6 +118,7 @@ struct st_flags
 {
 	/* Config file flags */
 	unsigned daemon             : 1;
+	unsigned daemon_tmp         : 1;
 	unsigned hexdump            : 1;
 	unsigned append_user        : 1;
 	unsigned preserve_env       : 1;
@@ -188,7 +189,7 @@ EXTERN int sock;
 
 /* Child */
 EXTERN struct passwd *userinfo;
-EXTERN sigset_t sigmask;
+EXTERN sigset_t usr1_sigmask;
 EXTERN pid_t master_pid;
 EXTERN pid_t slave_pid;
 EXTERN char *telopt_username;

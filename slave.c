@@ -48,7 +48,7 @@ void runSlave(void)
 		   which gets doe automatically by exec() */
 		signal(SIGCHLD,SIG_DFL);
 		signal(SIGHUP,SIG_DFL);
-		sigprocmask(SIG_UNBLOCK,&sigmask,NULL);
+		sigprocmask(SIG_UNBLOCK,&usr1_sigmask,NULL);
 
 		if (shell_exec_argv)
 		{
@@ -149,7 +149,7 @@ void runSlave(void)
 		do
 		{
 			/* If it errors just exit , who cares */
-			if (sigwait(&sigmask,&sig) == -1) break;
+			if (sigwait(&usr1_sigmask,&sig) == -1) break;
 		} while(sig != SIGUSR1);
 	}
 }
