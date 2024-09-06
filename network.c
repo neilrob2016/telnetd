@@ -9,41 +9,42 @@ static void processLine(void);
 
 
 /*** Create the socket to initially connect to ***/
-void createListenSocket(void)
+void createListenSocket(int inum)
 {
 	struct sockaddr_in bind_addr;
 	int on;
 
-	if ((listen_sock = socket(AF_INET,SOCK_STREAM,0)) == -1)
+	if ((iface[inum].sock = socket(AF_INET,SOCK_STREAM,0)) == -1)
 	{
-		logprintf(0,"ERROR: createListenSocket(): socket(): %s\n",
+		logprintf(inum,"ERROR: createListenSocket(): socket(): %s\n",
 			strerror(errno));
 		exit(1);
 	}
 
 	on = 1;
 	if (setsockopt(
-		listen_sock,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) == -1)
+		iface[inum].sock,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on)) == -1)
 	{
 		logprintf(0,"ERROR: createListenSocket(): setsockopt(SO_REUSEADDR): %s\n",
 			strerror(errno));
 		exit(1);
 	}
 
-	if (iface)
+	if (iface[inum].name)
 	{
 		logprintf(0,">>> Using interface \"%s\", address %s\n",
-			iface,inet_ntoa(iface_in_addr.sin_addr));
+			iface[inum].name,
+			inet_ntoa(iface[inum].addr.sin_addr));
 	}
 	else logprintf(0,">>> Using interface INADDR_ANY\n");
 
 	bzero(&bind_addr,sizeof(bind_addr));
 	bind_addr.sin_family = AF_INET;
 	bind_addr.sin_port = htons(port);
-	bind_addr.sin_addr.s_addr = iface_in_addr.sin_addr.s_addr;
+	bind_addr.sin_addr.s_addr = iface[inum].addr.sin_addr.s_addr;
 
 	if (bind(
-		listen_sock,
+		iface[inum].sock,
 		(struct sockaddr *)&bind_addr,sizeof(bind_addr)) == -1)
 	{
 		logprintf(0,"ERROR: createListenSocket(): bind(): %s\n",
@@ -51,7 +52,7 @@ void createListenSocket(void)
 		exit(1);
 	}
 
-	if (listen(listen_sock,20) == -1)
+	if (listen(iface[inum].sock,20) == -1)
 	{
 		logprintf(0,"ERROR: createListenSocket(): listen(): %s\n",
 			strerror(errno));

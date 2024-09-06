@@ -1,7 +1,10 @@
 /*****************************************************************************
  TDUSER
  Adds a user to telnetd's password file which is an alternative to the system
- login.
+ login and also will converted old password format files (pre telnetd version 
+ 20240906) to the current one. Password line format is now:
+
+ <username>:<encrypted pwd>:<max attempts>:<reserved>:<shell string>
  *****************************************************************************/
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -21,7 +24,7 @@
 
 #include "build_date.h"
 
-#define VERSION       "20240515"
+#define VERSION       "20240906"
 #define FILENAME      "telnetd.pwd"
 #define MIN_USER_LEN  2
 #define MAX_USER_LEN  32 /* Seems to be a general unix limit */
@@ -73,6 +76,8 @@ char *shell_str;
 char *map_start;
 char *map_end;
 int kbraw;
+int attempts;
+int convert;
 
 void  init(void);
 void  parseConfigFile(int argc, char **argv);
@@ -83,6 +88,7 @@ void  getUsername(void);
 void  getPassword(void);
 void  checkValidUsername(void);
 void  mapFile(void);
+void  convertFile(void);
 void  checkNewUser(void);
 void  writeEntry(void);
 void  sigHandler(int sig);
@@ -92,6 +98,12 @@ int main(int argc, char **argv)
 {
 	init();
 	parseConfigFile(argc,argv);
+	if (convert)
+	{
+		mapFile();
+		convertFile();
+		return 0;
+	}
 	if (!username) getUsername();
 	if (!password) getPassword();
 	checkValidUsername();
@@ -129,6 +141,8 @@ void parseConfigFile(int argc, char **argv)
 	shell_str = NULL;
 	filename = NULL;
 	enc_type = ENC_DES;
+	attempts = 0;
+	convert = 0;
 
 	for(i=1;i < argc;++i)
 	{
@@ -139,10 +153,13 @@ void parseConfigFile(int argc, char **argv)
 		c = argv[i][1];
 		switch(c)
 		{
+		case 'c':
+			convert = 1;
+			continue;
 #ifndef __APPLE__
 		case 'l':
 			listSupported();
-			break;
+			continue;
 #endif
 		case 'v':
 			version();
@@ -160,6 +177,9 @@ void parseConfigFile(int argc, char **argv)
 			break;
 		case 'f':
 			filename = argv[++i];
+			break;
+		case 'm':
+			attempts = atoi(argv[++i]);
 			break;
 		case 's':
 			shell_str = argv[++i];
@@ -180,25 +200,31 @@ void parseConfigFile(int argc, char **argv)
 		}
 	}
 	if (!filename) filename = FILENAME;
-	return;
+	if (attempts >= 0) return;
 
 	USAGE:
 	printf("Usage: %s\n"
 	       "       -u <username>\n"
 	       "       -p <password>\n"
-	       "       -s <exec string>     : User shell program and args. This overrides the\n"
-	       "                              default system wide field in telnetd.cfg.\n"
-	       "                              Default = none\n"
-	       "       -f <password file>   : Default = \"%s\"\n"
+	       "       -s <exec string>        : User shell program and args. This overrides the\n"
+	       "                                 default system wide field in telnetd.cfg.\n"
+	       "                                 Default = none\n"
+	       "       -f <password file>      : Default = \"%s\"\n"
+	       "       -m <max login attempts> : Max login attempts for user at login prompt.\n"
+	       "                                 Must be >= 0. Zero means user system default.\n"
+	       "                                 Default = 0.\n"
 #ifndef __APPLE__
-	       "       -e <encryption type> : Options are DES,MD5,SHA256,SHA512 and BFISH.\n"
-	       "                              Default = DES\n"
-	       "       -l                   : List supported encryption types then exit.\n"
+	       "       -e <encryption type>    : Options are DES,MD5,SHA256,SHA512 and BFISH.\n"
+	       "                                 Default = DES\n"
+	       "       -l                      : List supported encryption types then exit.\n"
 #endif
-	       "       -v                   : Print version and build date then exit.\n"
+	       "       -c                      : Convert an old format password file into the\n"
+	       "                                 new format and write it to stdout.\n"
+	       "       -v                      : Print version and build date then exit.\n"
 	       "\nNote: All arguments are optional. If username and/or password are not provided\n"
-	       "      you will be prompted for them. This means they will not get stored in the\n"
-	       "      shell history as they would using the command line arguments.\n",
+	       "      you will be prompted for them unless -c given. This means they will not\n"
+	       "      get stored in the shell history as they would using the command line\n"
+	       "      arguments. The -c option only uses -f and -m.\n",
 		argv[0],FILENAME);
 	exit(1);
 }
@@ -445,8 +471,65 @@ void mapFile(void)
 
 
 
-/*** If the user is already in the file exit.
-     Line format: <username>:<encrypted password> ***/
+/*** This converts from the old file format to the new one which it writes 
+     to stdout ***/
+void convertFile(void)
+{
+	char *ptr;
+	char c;
+	int colons = 0;
+	int comment = 0;
+	int line_start = 1;
+	int linenum = 1;
+
+	/* Old format: <username>:<encrypted pwd>:<shell string> 
+	   New format: <username>:<encrypted pwd>:<max attempts>:<reserved>:<shell string>
+	*/
+	for(ptr=map_start;ptr < map_end;++ptr)
+	{
+		c = *ptr;
+		switch(c)
+		{
+		case '#':
+			putchar(c);
+			if (line_start)
+			{
+				comment = 1;
+				line_start = 0;
+			}
+			break;
+		case '\n':
+			if (!comment && colons == 1) printf(":%d::",attempts);
+			putchar(c);
+			++linenum;
+			line_start = 1;
+			comment = 0;
+			colons = 0;
+			break;
+		case ':':
+			putchar(c);
+			if (!comment)	
+			{
+				if (++colons == 2) printf("%d::",attempts);
+				else if (colons > 2)
+				{
+					fprintf(stderr,"ERROR: Too many colons on line %d. New format file?\n",linenum);
+					exit(1);
+				}
+			}
+			line_start = 0;
+			break;
+		default:
+			putchar(c);
+			if (!isspace(c)) line_start = 0;
+		}
+	}
+}
+
+
+
+
+/*** Get the user name (2nd field) and check it ***/
 void checkNewUser(void)
 {
 	char *ptr;
@@ -524,9 +607,9 @@ void writeEntry(void)
 		exit(1);
 	}
 	if (shell_str)
-		ret = fprintf(fp,"%s:%s:%s\n",username,ptr,shell_str);
+		ret = fprintf(fp,"%s:%s:%d::%s\n",username,ptr,attempts,shell_str);
 	else
-		ret = fprintf(fp,"%s:%s\n",username,ptr);
+		ret = fprintf(fp,"%s:%s:%d::\n",username,ptr,attempts);
 
 	fclose(fp);
 	if (ret == -1)

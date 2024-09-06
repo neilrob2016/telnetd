@@ -22,7 +22,7 @@
 
 static void processConfigParam(char **words, int word_cnt, int linenum);
 static void parseBannedUsers(char *list);
-static void parseInterface(char *addr);
+static void parseInterfaces(char **words, int word_cnt, int linenum);
 static void parseIPList(char **words, int word_cnt);
 static void printParams(void);
 
@@ -169,6 +169,10 @@ void parseConfigFile(void)
 	if (!login_timeout_msg) login_timeout_msg = strdup(LOGIN_TIMEOUT_MSG);
 	if (!banned_user_msg) banned_user_msg = strdup(BANNED_USER_MSG);
 
+	/* The 0 index is set in main.c:init() to be INADDR_ANY as a
+	   default */
+	if (!num_interfaces) num_interfaces = 1;
+
 	printParams();
 }
 
@@ -311,6 +315,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 		{
 		case FIELD_IP_WHITELIST:
 		case FIELD_IP_BLACKLIST:
+		case FIELD_NETWORK_INTERFACE:
 			break;
 		default:
 			if (word_cnt > 2)
@@ -423,7 +428,7 @@ void processConfigParam(char **words, int word_cnt, int linenum)
 		/* String values */
 		case FIELD_NETWORK_INTERFACE:
 			if (flags.rx_sighup) goto IGNORE_WARNING;
-			parseInterface(value);
+			parseInterfaces(words,word_cnt,linenum);
 			break;
 
 		case FIELD_LOGIN_PROGRAM:
@@ -607,34 +612,82 @@ void parseBannedUsers(char *list)
 
 
 
-void parseInterface(char *addr)
+/*** Find the interface and copy its details into iface[i].addr ***/
+void parseInterfaces(char **words, int word_cnt, int linenum)
 {
 	struct ifaddrs *addr_list;
 	struct ifaddrs *entry;
+	int ret;
+	int en;
+	int inum;
+	int i;
+	int j;
 
-	/* Valid IP address or interface name? */
-	if ((int)(iface_in_addr.sin_addr.s_addr = inet_addr(addr)) != -1) return;
-
-	iface = strdup(addr);
-	if (getifaddrs(&addr_list) == -1)
+	if (word_cnt > MAX_INTERFACES + 1)
 	{
-		logprintf(0,"ERROR: parseInterface(): getifaddrs(): %s\n",
-			strerror(errno));
+		logprintf(0,"ERROR: parseInterface(): Too many interfaces (%d), maximum is %d, on line %d.\n",
+			word_cnt - 1,
+			MAX_INTERFACES,
+			linenum);
 		parentExit(-1);
 	}
-	/* Match interface name */
-	for(entry=addr_list;entry;entry=entry->ifa_next)
+	ret = getifaddrs(&addr_list);
+	en = errno;
+
+	for(i=1;i < word_cnt;++i)
 	{
-		/* IP4 only for now */
-		if (!strcmp(iface,entry->ifa_name) &&
-		    entry->ifa_addr->sa_family == AF_INET)
+		inum = i - 1;
+
+		/* If not -1 then its a numeric IP address */
+		if ((int)(iface[inum].addr.sin_addr.s_addr = inet_addr(words[i])) != -1)
+			continue;
+
+		/* Resolve interface name */
+		if (ret == -1)
 		{
-			memcpy(&iface_in_addr,entry->ifa_addr,sizeof(iface_in_addr));
-			return;
+			logprintf(0,"ERROR: parseInterface(): getifaddrs(): %s\n",
+				strerror(en));
+			parentExit(-1);
+		}
+		iface[inum].name = strdup(words[i]);
+
+		/* Match interface name */
+		for(entry=addr_list;entry;entry=entry->ifa_next)
+		{
+			/* IP4 only for now */
+			if (!strcmp(iface[inum].name,entry->ifa_name) &&
+			    entry->ifa_addr->sa_family == AF_INET)
+			{
+				memcpy(
+					&iface[inum].addr,
+					entry->ifa_addr,
+					sizeof(iface[inum].addr));
+				break;
+			}
+		}
+		if (!entry)
+		{
+			logprintf(0,"ERROR: Interface \"%s\" does not exist, is not up or is not IP4 on line %d.\n",
+				iface[inum].name,linenum);
+			parentExit(-1);
 		}
 	}
-	logprintf(0,"ERROR: Interface \"%s\" does not exist or is not IP4.\n",iface);
-	parentExit(-1);
+	num_interfaces = word_cnt - 1;
+
+	/* Check for duplicates */
+	for(i=0;i < num_interfaces-1;++i)
+	{
+		for(j=i+1;j < num_interfaces;++j)
+		{
+			if (iface[i].addr.sin_addr.s_addr == iface[j].addr.sin_addr.s_addr)
+			{
+				logprintf(0,"ERROR: Duplicate interfaces %s on line %d.\n",
+					inet_ntoa(iface[i].addr.sin_addr),
+					linenum);
+				parentExit(-1);
+			}
+		}
+	}
 }
 
 
@@ -666,7 +719,20 @@ void printParams(void)
 	logprintf(0,"    Password file         : %s\n",PRTSTR(pwd_file));
 	logprintf(0,"    Log file              : %s\n",PRTSTR(log_file));
 	logprintf(0,"    Log file max wrt fails: %d\n",log_file_max_fails);
-	logprintf(0,"    Network interface     : %s\n",PRTSTR(iface));
+	logprintf(0,"    Network interfaces    : ");
+	for(i=0;i < num_interfaces;++i)
+	{
+		if (iface[i].name)
+			logprintf(0,"%s ",iface[i].name);
+		else
+		{
+			if (iface[i].addr.sin_addr.s_addr)
+				logprintf(0,"%s ",inet_ntoa(iface[i].addr.sin_addr));
+			else
+				logprintf(0,"ALL");
+		}
+	}
+	logprintf(0,"\n");
 	logprintf(0,"    Port                  : %d\n",port);
 	logprintf(0,"    Telopt timeout        : %d secs\n",telopt_timeout_secs);
 	logprintf(0,"    Be daemon             : %s\n",YESNO(flags.daemon_tmp));

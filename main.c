@@ -29,6 +29,7 @@ static void sigExitHandler(int sig, siginfo_t *siginfo, void *pcontext);
 int main(int argc, char **argv)
 {
 	int first = 1;
+	int i;
 
 	while(1)
 	{
@@ -37,7 +38,7 @@ int main(int argc, char **argv)
 		version();
 		parseConfigFile();
 		doChecks();
-		createListenSocket();
+		for(i=0;i < num_interfaces;++i)	createListenSocket(i);
 		if (flags.daemon_tmp)
 		{
 			beDaemon();
@@ -60,6 +61,8 @@ int main(int argc, char **argv)
 
 void init(int first)
 {
+	int i;
+
 	/* Don't clear the log file if we're restarting or the messages will
 	   disappear into a black hole if we're running as a daemon */
 	if (first) log_file = NULL;
@@ -88,15 +91,20 @@ void init(int first)
 	log_file_fail_cnt = 0;
 	pre_motd_file = NULL;
 	post_motd_file = NULL;
-	iface = NULL;
-	iface_in_addr.sin_addr.s_addr = INADDR_ANY;
-	listen_sock = 0;
 	state = STATE_NOTSET;
 	parent_pid = getpid();
 	username[0] = 0;
 	iplist = NULL;
 	iplist_cnt = 0;
 	iplist_type = IP_NO_LIST;
+
+	for(i=0;i < MAX_INTERFACES;++i)
+	{
+		iface[i].sock = 0;
+		iface[i].addr.sin_addr.s_addr = INADDR_ANY;
+		iface[i].name = NULL;
+	}
+	num_interfaces = 0;
 
 	bzero(&flags,sizeof(flags));
 }
@@ -108,7 +116,6 @@ void clear(void)
 {
 	int i;
 
-	close(listen_sock);
 	FREE(login_prompt);
 	FREE(pwd_prompt);
 	FREE(login_incorrect_msg);
@@ -135,6 +142,8 @@ void clear(void)
 
 	for(i=0;i < iplist_cnt;++i) free(iplist[i]);
 	FREE(iplist);
+
+	for(i=0;i < num_interfaces;++i) close(iface[i].sock);
 }
 
 
@@ -355,12 +364,14 @@ void setSignals(void)
 
 /********************************* RUNTIME **********************************/
 
-/*** Does what it says on the tin ***/
+/*** Wait for incoming connections ***/
 void mainloop(void)
 {
 	struct sockaddr_in ip_addr;
 	struct linger lin;
 	socklen_t size;
+	fd_set mask;
+	int i;
 
 	logprintf(parent_pid,"STARTED: Parent process.\n");
 
@@ -368,62 +379,90 @@ void mainloop(void)
 	lin.l_onoff = 1;
 	lin.l_linger = 1;
 
-	/* Sit in accept and just fork off a child when it returns */
-	while(1)
+	/* Sit in select and fork off a child when a connection happens */
+	while(1) 
 	{
-		if ((sock = accept(
-			listen_sock,(struct sockaddr *)&ip_addr,&size)) == -1)
+		FD_ZERO(&mask);
+		for(i=0;i < num_interfaces;++i)
 		{
-			if (errno == EINTR)
-			{
-				if (flags.rx_sighup) return;
-				if (flags.ignore_sighup) continue;
-			}
-
-			/* This is fairly terminal , just die */
-			logprintf(parent_pid,"ERROR: mainloop(): accept(): %s\n",
-				strerror(errno));
-			parentExit(-1);
+			if (iface[i].sock) FD_SET(iface[i].sock,&mask);
 		}
 
-		strcpy(ipaddrstr,inet_ntoa(ip_addr.sin_addr));
-
-		logprintf(parent_pid,"CONNECTION: Socket = %d, IP = %s\n",
-			sock,ipaddrstr);
-
-		/* See if IP in white/black list. Do this before we waste cycles
-		   doing a fork  */
-		if (!authorisedIP(ipaddrstr))
+		/* Wait for one of the listen sockets to have a connection */
+		if (select(FD_SETSIZE,&mask,0,0,0) == -1)
 		{
-			logprintf(parent_pid,"CONNECTION REFUSED: Banned IP address.\n");
-			if (banned_ip_msg) sockprintf("%s\r\n",banned_ip_msg);
-			close(sock);
+			/* Shouldn't ever error */
+			logprintf(parent_pid,"ERROR: mainloop(): select(): %s\n",				strerror(errno));
+			sleep(10);
 			continue;
 		}
 
-		if (setsockopt(
-			sock,
-			SOL_SOCKET,SO_LINGER,(char *)&lin,sizeof(lin)) == -1)
+		/* Accept any connections on the sockets */
+		for(i=0;i < num_interfaces;++i)
 		{
-			logprintf(parent_pid,"WARNING: mainloop(): setsockopt(SO_LINGER): %s\n",
-				strerror(errno));
-		}
+			if (!FD_ISSET(iface[i].sock,&mask)) continue;
+			
+			if ((sock = accept(
+				iface[i].sock,
+				(struct sockaddr *)&ip_addr,&size)) == -1)
+			{
+				if (errno == EINTR)
+				{
+					if (flags.rx_sighup) return;
+					if (flags.ignore_sighup) continue;
+				}
 
-		switch(fork())
-		{
-		case -1:
-			logprintf(parent_pid,"ERROR: mainloop(): fork(): %s\n",
-				strerror(errno));
-			break;
-		case 0:
-			signal(SIGHUP,SIG_IGN);
-			close(listen_sock);
-			runMaster(&ip_addr);
-			break;
-		default:
-			break;
+				/* This should never happen but if it does
+				   just close the listen socket */
+				logprintf(parent_pid,"ERROR: mainloop(): accept(): %s\n",
+					strerror(errno));
+				close(iface[i].sock);
+				iface[i].sock = 0;
+				continue;
+			}
+
+			strcpy(ipaddrstr,inet_ntoa(ip_addr.sin_addr));
+
+			logprintf(parent_pid,"CONNECTION: Interface IP = %s, remote IP = %s, socket = %d\n",
+				inet_ntoa(iface[i].addr.sin_addr),
+				ipaddrstr,sock);
+
+			/* See if IP in white/black list. Do this before we 
+			   waste cycles doing a fork  */
+			if (!authorisedIP(ipaddrstr))
+			{
+				logprintf(parent_pid,"CONNECTION REFUSED: Banned IP address.\n");
+				if (banned_ip_msg) sockprintf("%s\r\n",banned_ip_msg);
+				close(sock);
+				continue;
+			}
+
+			if (setsockopt(
+				sock,
+				SOL_SOCKET,
+				SO_LINGER,(char *)&lin,sizeof(lin)) == -1)
+			{
+				/* Not fatal but note it */
+				logprintf(parent_pid,"WARNING: mainloop(): setsockopt(SO_LINGER): %s\n",
+					strerror(errno));
+			}
+
+			switch(fork())
+			{
+			case -1:
+				logprintf(parent_pid,"ERROR: mainloop(): fork(): %s\n",
+					strerror(errno));
+				break;
+			case 0:
+				signal(SIGHUP,SIG_IGN);
+				close(iface[i].sock);
+				runMaster(&ip_addr);
+				break;
+			default:
+				break;
+			}
+			close(sock);
 		}
-		close(sock);
 	}
 }
 
@@ -450,6 +489,5 @@ void sigExitHandler(int sig, siginfo_t *siginfo, void *pcontext)
 {
 	logprintf(parent_pid,"SIGNAL %d (%s) from pid %d: Exiting...\n",
 		sig,strsignal(sig),siginfo->si_pid);
-	close(listen_sock);
 	parentExit(sig);
 }

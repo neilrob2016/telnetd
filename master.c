@@ -222,7 +222,10 @@ void checkLoginAttempts(void)
 	if (++attempts >= login_max_attempts)
 	{
 		sockprintf("\r\n%s\r\n\r\n",login_max_attempts_msg);
-		logprintf(master_pid,"Maximum login attempts reached.\n");
+		/* login_max_attempts could have been changed in pwd file so
+		   print it out */
+		logprintf(master_pid,"Maximum login attempts (%d) reached.\n",
+			login_max_attempts);
 		masterExit(0);
 	}
 }

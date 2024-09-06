@@ -45,7 +45,7 @@ void runSlave(void)
 		kill(getppid(),SIGUSR1);
 
 		/* Reset signals back to their default except for handled ones
-		   which gets doe automatically by exec() */
+		   which gets done automatically by exec() */
 		signal(SIGCHLD,SIG_DFL);
 		signal(SIGHUP,SIG_DFL);
 		sigprocmask(SIG_UNBLOCK,&usr1_sigmask,NULL);

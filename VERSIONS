@@ -112,3 +112,13 @@ Sept 2021
 20240620
 ========
 - A full restart is now done when receiving a SIGHUP
+
+
+20240906
+========
+- Multiple network interfaces can now be specified in the config instead of
+  just the one previously.
+- Added 2 new fields to password file - max user login attempts and a reserved
+  field for future use.
+- Added -c option to tduser util to convert an old password file into the
+  new format (note that telnetd now will only read the new format).

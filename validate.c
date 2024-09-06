@@ -135,6 +135,7 @@ int parseTelnetdPwdFile(char *password)
 	char *estr;
 	char c;
 	int linenum;
+	int attempts;
 
 	logprintf(master_pid,"Reading password file \"%s\"...\n",pwd_file);
 
@@ -153,7 +154,12 @@ int parseTelnetdPwdFile(char *password)
 	estr = field[PWD_EXEC_STR];
 
 	/* Sanity checks */
-	if (!epwd || strlen(epwd) < 4) return -1;
+	if (!epwd || !epwd || strlen(epwd) < 4 || !field[PWD_MAX_ATTEMPTS])
+		return -1;
+	if ((attempts = atoi(field[PWD_MAX_ATTEMPTS])) < 0) return -1;
+
+	/* Can reset the global as we've already forked */
+	if (attempts > 0) login_max_attempts = attempts;
 	
 	/* If the encrypted password has '$' at start then its one of the
 	   extended encryption types supported by glibc which are:

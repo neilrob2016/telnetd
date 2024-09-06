@@ -96,7 +96,7 @@ void freeWordArray(char **words, int word_cnt)
 
  #<comment>
  or
- <username>:<encrypted password>[:<exec line>]
+ <username>:<encrypted password>:<max attempts>:<reserved>[:<exec line>]
 
  The fields don't need to be alloced as "line" stays in scope while the
  fields are parsed in validate.c

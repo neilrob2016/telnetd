@@ -38,7 +38,7 @@
 #include "build_date.h"
 
 #define SVR_NAME    "NRJ-TelnetD"
-#define SVR_VERSION "20240620"
+#define SVR_VERSION "20240906"
 
 #define PORT                23
 #define BUFFSIZE            2000
@@ -47,6 +47,7 @@
 #define LOGIN_MAX_ATTEMPTS  3
 #define TELOPT_TIMEOUT_SECS 2
 #define LOG_FILE_MAX_FAILS  2
+#define MAX_INTERFACES      256 /* Don't know system limit but can't be more */
 
 #define FREE(M) if (M) free(M)
 
@@ -101,6 +102,8 @@ enum
 {
 	PWD_USER,
 	PWD_EPWD,
+	PWD_MAX_ATTEMPTS,
+	PWD_RESERVED,
 	PWD_EXEC_STR,
 
 	NUM_PWD_FIELDS
@@ -139,9 +142,16 @@ struct st_flags
 };
 
 
+struct st_interface
+{
+	char *name;
+	int sock;
+	struct sockaddr_in addr;
+};
+
+EXTERN struct st_interface iface[MAX_INTERFACES];
+
 /* Config file */
-EXTERN struct sockaddr_in iface_in_addr;
-EXTERN char *iface;
 EXTERN char *config_file;
 EXTERN char *login_prompt;
 EXTERN char *pwd_prompt;
@@ -170,6 +180,7 @@ EXTERN int log_file_max_fails;
 EXTERN int port;
 EXTERN int iplist_cnt;
 EXTERN int iplist_type;
+EXTERN int num_interfaces;
 
 /* General */
 EXTERN struct st_flags flags;
@@ -183,7 +194,6 @@ EXTERN char *dnsaddr;
 EXTERN int log_file_fail_cnt;
 EXTERN int term_height;
 EXTERN int term_width;
-EXTERN int listen_sock;
 EXTERN int buffpos;
 EXTERN int sock;
 
@@ -221,7 +231,7 @@ int  openPTYSlave(void);
 char *getPTYName(void);
 
 /* network.c */
-void createListenSocket(void);
+void createListenSocket(int inum);
 void readSock(void);
 void writeSock(u_char *data, int len);
 
